@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Search, Edit2, Copy, Save, X, Plus, Trash } from 'lucide-react';
+import { ArrowLeft, Search, Edit2, Copy, Save, X, Plus, Trash, AlertTriangle, CheckCircle2, AlertCircle } from 'lucide-react';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { playSuccessSound } from '../utils/audio';
 
@@ -14,15 +14,19 @@ export default function VentaView({ venta, onBack }) {
   const [editCodigo, setEditCodigo] = useState('');
   const [editCantidad, setEditCantidad] = useState('');
 
+  // Estados para Modales Custom
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [alertInfo, setAlertInfo] = useState(null); // { type: 'success'|'error', msg: string }
+
   const codigoInputRef = useRef(null);
   const editCodigoRef = useRef(null);
 
-  // MANEJO DEL BOTÓN "ATRÁS" (POPSTATE) PARA EL MODO EDICIÓN
   useEffect(() => {
     const handlePopState = (e) => {
-      // Si el navegador retrocedió y volvimos a la capa 'venta' (saliendo de 'edit')
       if (e.state?.screen === 'venta') {
         setEditingId(null);
+        setItemToDelete(null);
+        setAlertInfo(null);
       }
     };
     window.addEventListener('popstate', handlePopState);
@@ -30,12 +34,13 @@ export default function VentaView({ venta, onBack }) {
   }, []);
 
   useEffect(() => {
-    if (!editingId) {
+    // Si no hay modales abiertos, mantener el foco
+    if (!editingId && !itemToDelete && !alertInfo) {
       setTimeout(() => codigoInputRef.current?.focus(), 50);
-    } else {
+    } else if (editingId) {
       setTimeout(() => editCodigoRef.current?.focus(), 50);
     }
-  }, [editingId]);
+  }, [editingId, itemToDelete, alertInfo]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -57,11 +62,9 @@ export default function VentaView({ venta, onBack }) {
     playSuccessSound();
     setCodigo('');
     setCantidad('');
-    codigoInputRef.current?.focus();
   };
 
   const handleEdit = (item) => {
-    // Al entrar a editar, CREAMOS un paso falso en el historial del PDA
     window.history.pushState({ screen: 'edit' }, '');
     setEditingId(item.id);
     setEditCodigo(item.codigo);
@@ -69,9 +72,8 @@ export default function VentaView({ venta, onBack }) {
   };
 
   const cancelEdit = () => {
-    // Si apretamos la 'X' virtual, obligamos a retroceder el historial
     if (window.history.state?.screen === 'edit') {
-      window.history.back(); // Esto dispara popstate -> cancela edición
+      window.history.back();
     } else {
       setEditingId(null);
     }
@@ -89,13 +91,13 @@ export default function VentaView({ venta, onBack }) {
     ));
     
     playSuccessSound();
-    cancelEdit(); // Salimos limpiando el historial
+    cancelEdit();
   };
 
-  const deleteItem = (id) => {
-    if(window.confirm('¿Seguro que deseas eliminar esta fila?')){
-      setItems(items.filter(item => item.id !== id));
-      codigoInputRef.current?.focus();
+  const confirmDelete = () => {
+    if (itemToDelete) {
+      setItems(items.filter(item => item.id !== itemToDelete));
+      setItemToDelete(null);
     }
   };
 
@@ -106,10 +108,8 @@ export default function VentaView({ venta, onBack }) {
     });
     
     navigator.clipboard.writeText(text)
-      .then(() => alert("✅ Copiado al portapapeles con formato Excel. Listo para pegar."))
-      .catch(() => alert("❌ Error al copiar"));
-      
-    codigoInputRef.current?.focus();
+      .then(() => setAlertInfo({ type: 'success', msg: 'Copiado al portapapeles con formato Excel. Listo para pegar.' }))
+      .catch(() => setAlertInfo({ type: 'error', msg: 'Error al intentar copiar al portapapeles.' }));
   };
 
   const filteredItems = items.filter(item => 
@@ -119,7 +119,7 @@ export default function VentaView({ venta, onBack }) {
   const totalItems = items.reduce((acc, curr) => acc + curr.cantidad, 0);
 
   return (
-    <div className="max-w-md mx-auto bg-gray-900 min-h-screen flex flex-col text-gray-100">
+    <div className="max-w-md mx-auto bg-gray-900 min-h-screen flex flex-col text-gray-100 relative">
       <header className="bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-2 -ml-2 rounded-full hover:bg-gray-700 transition-colors text-gray-300">
@@ -227,7 +227,7 @@ export default function VentaView({ venta, onBack }) {
                       <button onClick={() => handleEdit(item)} className="text-blue-400 hover:bg-blue-900/30 p-1.5 rounded-md transition-colors">
                         <Edit2 size={16} />
                       </button>
-                      <button onClick={() => deleteItem(item.id)} className="text-red-400 hover:bg-red-900/30 p-1.5 rounded-md transition-colors">
+                      <button onClick={() => setItemToDelete(item.id)} className="text-red-400 hover:bg-red-900/30 p-1.5 rounded-md transition-colors">
                         <Trash size={16} />
                       </button>
                     </div>
@@ -247,6 +247,67 @@ export default function VentaView({ venta, onBack }) {
           </div>
         </div>
       </div>
+
+      {/* MODAL CONFIRMACIÓN DE ELIMINAR FILA */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-2xl w-full max-w-xs border border-gray-700 overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 text-center flex flex-col items-center gap-3">
+              <div className="bg-red-900/30 p-3 rounded-full text-red-500 mb-2">
+                <Trash size={32} />
+              </div>
+              <h3 className="text-lg font-bold text-white">¿Borrar código?</h3>
+              <p className="text-sm text-gray-400">Esta fila será eliminada de tu lista actual.</p>
+            </div>
+            <div className="flex border-t border-gray-700">
+              <button 
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 py-4 text-gray-300 font-bold bg-gray-800 hover:bg-gray-700 transition-colors"
+              >
+                Cancelar
+              </button>
+              <div className="w-px bg-gray-700"></div>
+              <button 
+                onClick={confirmDelete}
+                className="flex-1 py-4 text-red-400 font-bold bg-gray-800 hover:bg-gray-700 hover:text-red-300 transition-colors"
+              >
+                Borrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ALERTA (EJ: EXCEL COPIADO) */}
+      {alertInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-2xl w-full max-w-xs border border-gray-700 overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 text-center flex flex-col items-center gap-3">
+              {alertInfo.type === 'success' ? (
+                <div className="bg-green-900/30 p-3 rounded-full text-green-500 mb-2">
+                  <CheckCircle2 size={32} />
+                </div>
+              ) : (
+                <div className="bg-red-900/30 p-3 rounded-full text-red-500 mb-2">
+                  <AlertCircle size={32} />
+                </div>
+              )}
+              <h3 className="text-lg font-bold text-white">
+                {alertInfo.type === 'success' ? '¡Éxito!' : 'Error'}
+              </h3>
+              <p className="text-sm text-gray-400">{alertInfo.msg}</p>
+            </div>
+            <div className="flex border-t border-gray-700">
+              <button 
+                onClick={() => setAlertInfo(null)}
+                className="flex-1 py-4 text-blue-400 font-bold bg-gray-800 hover:bg-gray-700 transition-colors"
+              >
+                Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
