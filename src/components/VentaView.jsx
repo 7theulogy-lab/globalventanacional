@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Search, Edit2, Copy, Save, X, Plus, Trash } from 'lucide-react';
 import useLocalStorage from '../hooks/useLocalStorage';
+import { playSuccessSound } from '../utils/audio';
 
 export default function VentaView({ venta, onBack }) {
   const [items, setItems] = useLocalStorage(`venta_items_${venta.id}`, []);
@@ -41,6 +42,9 @@ export default function VentaView({ venta, onBack }) {
       setItems([{ id: Date.now().toString(), codigo: cleanCodigo, cantidad: numCantidad }, ...items]);
     }
 
+    // Reproducir sonido SIEMPRE, sin importar si es nuevo o se sumó a uno existente
+    playSuccessSound();
+
     setCodigo('');
     setCantidad('');
     codigoInputRef.current?.focus();
@@ -62,6 +66,10 @@ export default function VentaView({ venta, onBack }) {
     setItems(items.map(item => 
       item.id === editingId ? { ...item, codigo: cleanCodigo, cantidad: numCantidad } : item
     ));
+    
+    // Opcional: Sonido al guardar edición
+    playSuccessSound();
+    
     setEditingId(null);
   };
 
@@ -121,9 +129,9 @@ export default function VentaView({ venta, onBack }) {
             <input 
               ref={codigoInputRef}
               type="text" 
-              className="w-full bg-gray-900 border border-gray-700 p-2.5 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase font-mono font-bold placeholder-gray-600"
+              className="w-full bg-gray-900 border border-gray-700 p-2.5 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono font-bold placeholder-gray-600"
               value={codigo}
-              onChange={(e) => setCodigo(e.target.value)}
+              onChange={(e) => setCodigo(e.target.value.toUpperCase())}
               placeholder="Ej: IP8194"
             />
           </div>
@@ -174,9 +182,9 @@ export default function VentaView({ venta, onBack }) {
                     <input 
                       ref={editCodigoRef}
                       type="text" 
-                      className="border border-yellow-700/50 p-1.5 rounded font-mono text-sm uppercase bg-gray-900 text-white w-full focus:outline-none focus:border-yellow-500"
+                      className="border border-yellow-700/50 p-1.5 rounded font-mono text-sm bg-gray-900 text-white w-full focus:outline-none focus:border-yellow-500"
                       value={editCodigo}
-                      onChange={(e) => setEditCodigo(e.target.value)}
+                      onChange={(e) => setEditCodigo(e.target.value.toUpperCase())}
                     />
                     <input 
                       type="number"
