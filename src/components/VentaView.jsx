@@ -17,6 +17,18 @@ export default function VentaView({ venta, onBack }) {
   const codigoInputRef = useRef(null);
   const editCodigoRef = useRef(null);
 
+  // MANEJO DEL BOTÓN "ATRÁS" (POPSTATE) PARA EL MODO EDICIÓN
+  useEffect(() => {
+    const handlePopState = (e) => {
+      // Si el navegador retrocedió y volvimos a la capa 'venta' (saliendo de 'edit')
+      if (e.state?.screen === 'venta') {
+        setEditingId(null);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   useEffect(() => {
     if (!editingId) {
       setTimeout(() => codigoInputRef.current?.focus(), 50);
@@ -42,18 +54,27 @@ export default function VentaView({ venta, onBack }) {
       setItems([{ id: Date.now().toString(), codigo: cleanCodigo, cantidad: numCantidad }, ...items]);
     }
 
-    // Reproducir sonido SIEMPRE, sin importar si es nuevo o se sumó a uno existente
     playSuccessSound();
-
     setCodigo('');
     setCantidad('');
     codigoInputRef.current?.focus();
   };
 
   const handleEdit = (item) => {
+    // Al entrar a editar, CREAMOS un paso falso en el historial del PDA
+    window.history.pushState({ screen: 'edit' }, '');
     setEditingId(item.id);
     setEditCodigo(item.codigo);
     setEditCantidad(item.cantidad);
+  };
+
+  const cancelEdit = () => {
+    // Si apretamos la 'X' virtual, obligamos a retroceder el historial
+    if (window.history.state?.screen === 'edit') {
+      window.history.back(); // Esto dispara popstate -> cancela edición
+    } else {
+      setEditingId(null);
+    }
   };
 
   const saveEdit = (e) => {
@@ -67,10 +88,8 @@ export default function VentaView({ venta, onBack }) {
       item.id === editingId ? { ...item, codigo: cleanCodigo, cantidad: numCantidad } : item
     ));
     
-    // Opcional: Sonido al guardar edición
     playSuccessSound();
-    
-    setEditingId(null);
+    cancelEdit(); // Salimos limpiando el historial
   };
 
   const deleteItem = (id) => {
@@ -101,7 +120,6 @@ export default function VentaView({ venta, onBack }) {
 
   return (
     <div className="max-w-md mx-auto bg-gray-900 min-h-screen flex flex-col text-gray-100">
-      {/* HEADER */}
       <header className="bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-2 -ml-2 rounded-full hover:bg-gray-700 transition-colors text-gray-300">
@@ -122,7 +140,6 @@ export default function VentaView({ venta, onBack }) {
       </header>
 
       <div className="p-4 flex-1 flex flex-col gap-4">
-        {/* FORMULARIO */}
         <form onSubmit={handleSubmit} className="bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-700 flex gap-2 items-end">
           <div className="flex-1">
             <label className="block text-xs font-bold text-gray-400 mb-1">Código</label>
@@ -154,7 +171,6 @@ export default function VentaView({ venta, onBack }) {
           </button>
         </form>
 
-        {/* BUSCADOR */}
         <div className="relative">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input 
@@ -166,7 +182,6 @@ export default function VentaView({ venta, onBack }) {
           />
         </div>
 
-        {/* LISTADO */}
         <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 flex-1 flex flex-col overflow-hidden">
           <div className="grid grid-cols-[1fr_70px_80px] gap-2 p-3 bg-gray-900 border-b border-gray-700 text-xs font-bold text-gray-400 uppercase">
             <div>Código</div>
@@ -197,7 +212,7 @@ export default function VentaView({ venta, onBack }) {
                       <button type="submit" className="text-green-400 bg-green-900/30 p-1.5 rounded-lg hover:bg-green-900/60">
                         <Save size={16} />
                       </button>
-                      <button type="button" onClick={() => setEditingId(null)} className="text-gray-400 bg-gray-700 p-1.5 rounded-lg hover:bg-gray-600">
+                      <button type="button" onClick={cancelEdit} className="text-gray-400 bg-gray-700 p-1.5 rounded-lg hover:bg-gray-600">
                         <X size={16} />
                       </button>
                     </div>
