@@ -1,24 +1,52 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import useLocalStorage from '../hooks/useLocalStorage';
-import { Plus, ChevronRight, Trash2, AlertTriangle, Building2, FolderOpen } from 'lucide-react';
+import StorageAlert from './StorageAlert';
+import { createBackup, parseBackup, prepareRestore } from '../utils/backup';
+import { Plus, ChevronRight, Trash2, Edit2, Download, Upload, AlertTriangle, Building2, FolderOpen } from 'lucide-react';
 
 export default function Dashboard({ onSelectVenta }) {
-  const [ventas, setVentas] = useLocalStorage('venta_nacional_list', []);
+  const [ventas, setVentas, storageError] = useLocalStorage('venta_nacional_list', []);
   const [newVentaName, setNewVentaName] = useState('');
   const [ventaToDelete, setVentaToDelete] = useState(null);
+  const [ventaToRename, setVentaToRename] = useState(null);
+  const [renamedValue, setRenamedValue] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [actionSuccess, setActionSuccess] = useState('');
+  const [pendingBackup, setPendingBackup] = useState(null);
+  const backupInputRef = useRef(null);
 
   const handleCreate = (e) => {
     e.preventDefault();
     if (!newVentaName.trim()) return;
     const newVenta = {
-      id: Date.now().toString(),
+      id: globalThis.crypto?.randomUUID?.() ?? Date.now().toString(),
       name: newVentaName.trim(),
-      date: new Date().toLocaleDateString()
+      date: new Date().toLocaleDateString('es-CL')
     };
     
-    setVentas([newVenta, ...ventas]);
+    if (!setVentas([newVenta, ...ventas])) return;
+    setActionError('');
     setNewVentaName('');
     onSelectVenta(newVenta);
+  };
+
+  const handleRenameClick = (venta, e) => {
+    e.stopPropagation();
+    setVentaToRename(venta.id);
+    setRenamedValue(venta.name);
+  };
+
+  const confirmRename = e => {
+    e.preventDefault();
+    const name = renamedValue.trim();
+    if (!name) return;
+    if (!setVentas(ventas.map(venta => venta.id === ventaToRename ? { ...venta, name } : venta))) {
+      setVentaToRename(null);
+      return;
+    }
+    setVentaToRename(null);
+    setRenamedValue('');
+    setActionError('');
   };
 
   const handleDeleteClick = (id, e) => {
@@ -28,9 +56,73 @@ export default function Dashboard({ onSelectVenta }) {
 
   const confirmDelete = () => {
     if (ventaToDelete) {
-      setVentas(ventas.filter(v => v.id !== ventaToDelete));
-      localStorage.removeItem(`venta_items_${ventaToDelete}`);
+      if (!setVentas(ventas.filter(v => v.id !== ventaToDelete))) {
+        setVentaToDelete(null);
+        return;
+      }
+      try {
+        localStorage.removeItem(`venta_items_${ventaToDelete}`);
+        setActionError('');
+      } catch {
+        setActionError('El pedido se quitó de la lista, pero no se pudo limpiar su copia local.');
+      }
       setVentaToDelete(null);
+    }
+  };
+
+  const downloadBackup = () => {
+    try {
+      const backup = createBackup(ventas, window.localStorage);
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `venta-nacional-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setActionError('');
+      setActionSuccess('Respaldo descargado. Guárdalo fuera de esta PDA.');
+    } catch {
+      setActionError('No se pudo crear el respaldo. Revisa los datos guardados.');
+    }
+  };
+
+  const selectBackup = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const backup = parseBackup(await file.text());
+      setPendingBackup(backup);
+      setActionError('');
+    } catch (error) {
+      setActionError(error.message);
+    }
+  };
+
+  const restoreBackup = () => {
+    if (!pendingBackup) return;
+    const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+    const restored = prepareRestore(pendingBackup, makeId);
+    const writtenKeys = [];
+    try {
+      for (const { venta, items } of restored) {
+        const key = `venta_items_${venta.id}`;
+        window.localStorage.setItem(key, JSON.stringify(items));
+        writtenKeys.push(key);
+      }
+      if (!setVentas([...restored.map(entry => entry.venta), ...ventas])) {
+        throw new Error('No se pudo guardar la lista de pedidos.');
+      }
+      setPendingBackup(null);
+      setActionError('');
+      setActionSuccess(`${restored.length} pedidos restaurados. Los pedidos existentes se conservaron.`);
+    } catch (error) {
+      writtenKeys.forEach(key => {
+        try { window.localStorage.removeItem(key); } catch { /* El error principal se muestra abajo. */ }
+      });
+      setPendingBackup(null);
+      setActionError(error.message);
     }
   };
 
@@ -48,6 +140,8 @@ export default function Dashboard({ onSelectVenta }) {
       </header>
 
       <main className="mx-auto w-full max-w-3xl px-4 pb-16 pt-6 sm:px-8 sm:pt-10">
+          <StorageAlert message={storageError || actionError} />
+          {actionSuccess && <p role="status" className="mb-5 rounded-lg border border-[#CFE7EA] bg-[#F2F8F9] px-4 py-3 text-sm text-global-blue">{actionSuccess}</p>}
           {/* TÍTULOS */}
           <p className="mb-2 text-xs text-global-text">Gestión y consolidación</p>
           <h2 className="mb-2 text-[30px] font-bold leading-tight tracking-tight text-global-navy min-[390px]:text-[32px]">Control de Calidad</h2>
@@ -125,21 +219,31 @@ export default function Dashboard({ onSelectVenta }) {
                   {ventas.map(venta => (
                     <div 
                       key={venta.id}
-                      onClick={() => onSelectVenta(venta)}
-                      className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between cursor-pointer hover:border-global-teal hover:shadow-md active:scale-[0.98] transition-all group"
+                      className="group flex items-center rounded-xl border border-gray-100 bg-white p-3 shadow-sm transition-all hover:border-global-teal hover:shadow-md sm:p-4"
                     >
-                      <div>
-                        <h3 className="font-bold text-global-navy group-hover:text-global-teal transition-colors text-[15px]">{venta.name}</h3>
-                        <p className="text-[12px] text-global-text mt-0.5">{venta.date}</p>
-                      </div>
-                      <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => onSelectVenta(venta)} className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-global-blue">
+                        <span className="min-w-0">
+                          <span className="block break-words text-[15px] font-bold text-global-navy transition-colors group-hover:text-global-teal">{venta.name}</span>
+                          <span className="mt-0.5 block text-xs text-global-text">{venta.date}</span>
+                        </span>
+                        <ChevronRight className="shrink-0 text-gray-300 transition-colors group-hover:text-global-teal" size={20} aria-hidden="true" />
+                      </button>
+                      <div className="ml-1 flex shrink-0 items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => handleRenameClick(venta, e)}
+                          aria-label={`Renombrar ${venta.name}`}
+                          className="rounded-full p-2.5 text-global-blue hover:bg-[#F2F8F9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-global-blue"
+                        >
+                          <Edit2 size={18} aria-hidden="true" />
+                        </button>
                         <button 
                           onClick={(e) => handleDeleteClick(venta.id, e)}
+                          aria-label={`Eliminar ${venta.name}`}
                           className="text-red-400 p-2.5 hover:bg-red-50 rounded-full transition-colors opacity-60 hover:opacity-100"
                         >
                           <Trash2 size={18} />
                         </button>
-                        <ChevronRight className="text-gray-300 group-hover:text-global-teal transition-colors" size={20} />
                       </div>
                     </div>
                   ))}
@@ -147,7 +251,48 @@ export default function Dashboard({ onSelectVenta }) {
               </div>
             )}
           </div>
+          <section className="mt-6 rounded-xl border border-[#DCE2E7] bg-white p-5 shadow-sm" aria-labelledby="backup-title">
+            <h2 id="backup-title" className="text-base font-semibold text-global-navy">Respaldo de esta PDA</h2>
+            <p className="mt-1 text-[13px] leading-relaxed text-global-text">Guarda una copia de tus pedidos o recupera una copia anterior. Restaurar agrega los pedidos sin borrar los actuales.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" onClick={downloadBackup} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#DCE2E7] px-3 text-sm font-medium text-global-blue hover:bg-[#F2F8F9]"><Download size={16} aria-hidden="true" /> Descargar respaldo</button>
+              <button type="button" onClick={() => backupInputRef.current?.click()} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#DCE2E7] px-3 text-sm font-medium text-global-blue hover:bg-[#F2F8F9]"><Upload size={16} aria-hidden="true" /> Restaurar respaldo</button>
+              <input ref={backupInputRef} type="file" accept=".json,application/json" className="sr-only" onChange={selectBackup} aria-label="Archivo de respaldo" />
+            </div>
+          </section>
       </main>
+
+        {pendingBackup && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-global-navy/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="restore-title">
+            <div className="w-full max-w-[360px] overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="p-6">
+                <h2 id="restore-title" className="text-lg font-bold text-global-navy">Restaurar respaldo</h2>
+                <p className="mt-2 text-sm leading-relaxed text-global-text">Se agregarán {pendingBackup.pedidos.length} pedidos a esta PDA. Los pedidos actuales se conservarán.</p>
+              </div>
+              <div className="flex border-t border-gray-100 bg-gray-50">
+                <button type="button" onClick={() => setPendingBackup(null)} className="min-h-12 flex-1 text-sm font-semibold text-global-text hover:bg-gray-100">Cancelar</button>
+                <button type="button" onClick={restoreBackup} className="min-h-12 flex-1 border-l border-gray-200 text-sm font-semibold text-global-blue hover:bg-[#F2F8F9]">Restaurar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {ventaToRename && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-global-navy/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="rename-title">
+            <form onSubmit={confirmRename} className="w-full max-w-[360px] overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="p-6">
+                <h2 id="rename-title" className="text-lg font-bold text-global-navy">Renombrar pedido</h2>
+                <p className="mb-4 mt-1 text-sm text-global-text">Corrige el nombre sin perder los códigos registrados.</p>
+                <label htmlFor="rename-venta" className="mb-2 block text-sm font-semibold text-global-navy">Nombre del pedido</label>
+                <input id="rename-venta" autoFocus required value={renamedValue} onChange={e => setRenamedValue(e.target.value.toUpperCase())} className="w-full rounded-md border border-[#DCE2E7] px-3 py-3 text-sm focus:border-global-blue focus:outline-none focus:ring-2 focus:ring-global-blue/20" />
+              </div>
+              <div className="flex border-t border-gray-100 bg-gray-50">
+                <button type="button" onClick={() => setVentaToRename(null)} className="min-h-12 flex-1 text-sm font-semibold text-global-text hover:bg-gray-100">Cancelar</button>
+                <button type="submit" className="min-h-12 flex-1 border-l border-gray-200 text-sm font-semibold text-global-blue hover:bg-[#F2F8F9]">Guardar nombre</button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* MODAL ELIMINAR */}
         {ventaToDelete && (

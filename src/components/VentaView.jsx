@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Search, Package, Edit2, Copy, Save, X, Plus, Trash, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Search, Package, Edit2, Copy, Save, X, Plus, Trash, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
 import useLocalStorage from '../hooks/useLocalStorage';
+import StorageAlert from './StorageAlert';
 import { playSuccessSound } from '../utils/audio';
+import { addCode, editCode, consolidateItems } from '../utils/inventory';
 
 export default function VentaView({ venta, onBack }) {
-  const [items, setItems] = useLocalStorage(`venta_items_${venta.id}`, []);
+  const [items, setItems, storageError] = useLocalStorage(`venta_items_${venta.id}`, []);
   const [searchQuery, setSearchQuery] = useState('');
   
   const [codigo, setCodigo] = useState('');
@@ -15,56 +17,84 @@ export default function VentaView({ venta, onBack }) {
   const [editCantidad, setEditCantidad] = useState('');
 
   const [itemToDelete, setItemToDelete] = useState(null);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [alertInfo, setAlertInfo] = useState(null);
+  const [feedback, setFeedback] = useState(null);
 
   const codigoInputRef = useRef(null);
   const editCodigoRef = useRef(null);
+  const initializedHistoryRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      const result = consolidateItems(items);
+      if (result.changed && setItems(result.items)) {
+        setFeedback({ type: 'success', message: 'Se unificaron códigos repetidos guardados anteriormente.' });
+      }
+    } catch {
+      setFeedback({ type: 'error', message: 'Hay códigos guardados con datos inválidos. Revisa este pedido.' });
+    }
+  }, [items]);
 
   useEffect(() => {
     const handlePopState = (e) => {
-      if (e.state?.screen === 'venta') {
+      if (e.state?.screen === 'edit' && e.state.ventaId === venta.id) {
+        const item = items.find(entry => entry.id === e.state.itemId);
+        if (item) {
+          setEditingId(item.id);
+          setEditCodigo(item.codigo);
+          setEditCantidad(item.cantidad);
+        }
+      } else if (e.state?.screen === 'venta') {
         setEditingId(null);
         setItemToDelete(null);
         setAlertInfo(null);
+        setConfirmClearAll(false);
       }
     };
+    if (!initializedHistoryRef.current) {
+      initializedHistoryRef.current = true;
+      if (window.history.state?.screen === 'edit') handlePopState({ state: window.history.state });
+    }
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [items, venta.id]);
 
   useEffect(() => {
-    if (!editingId && !itemToDelete && !alertInfo) {
+    if (!editingId && !itemToDelete && !confirmClearAll && !alertInfo) {
       setTimeout(() => codigoInputRef.current?.focus(), 50);
     } else if (editingId) {
       setTimeout(() => editCodigoRef.current?.focus(), 50);
     }
-  }, [editingId, itemToDelete, alertInfo]);
+  }, [editingId, itemToDelete, confirmClearAll, alertInfo]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!codigo.trim() || !cantidad) return;
-    
-    const cleanCodigo = codigo.trim().toUpperCase();
-    const numCantidad = parseInt(cantidad, 10) || 0;
+    try {
+      const id = globalThis.crypto?.randomUUID?.() ?? Date.now().toString();
+      const result = addCode(items, codigo, cantidad, id);
+      if (!setItems(result.items)) {
+        setFeedback({ type: 'error', message: 'No se guardó el código en este dispositivo.' });
+        return;
+      }
 
-    const existingIndex = items.findIndex(item => item.codigo === cleanCodigo);
-
-    if (existingIndex >= 0) {
-      const newItems = [...items];
-      newItems[existingIndex].cantidad += numCantidad;
-      setItems(newItems);
-    } else {
-      setItems([{ id: Date.now().toString(), codigo: cleanCodigo, cantidad: numCantidad }, ...items]);
+      playSuccessSound();
+      setFeedback({
+        type: 'success',
+        message: result.merged
+          ? `${result.code} ya existía: ${result.previousQuantity} → ${result.nextQuantity} unidades.`
+          : `${result.code} agregado: ${result.nextQuantity} unidades.`
+      });
+      setCodigo('');
+      setCantidad('');
+      requestAnimationFrame(() => codigoInputRef.current?.focus());
+    } catch (error) {
+      setFeedback({ type: 'error', message: error.message });
     }
-
-    playSuccessSound();
-    setCodigo('');
-    setCantidad('');
-    requestAnimationFrame(() => codigoInputRef.current?.focus());
   };
 
   const handleEdit = (item) => {
-    window.history.pushState({ screen: 'edit' }, '');
+    window.history.pushState({ screen: 'edit', ventaId: venta.id, itemId: item.id }, '');
     setEditingId(item.id);
     setEditCodigo(item.codigo);
     setEditCantidad(item.cantidad);
@@ -80,24 +110,48 @@ export default function VentaView({ venta, onBack }) {
 
   const saveEdit = (e) => {
     e.preventDefault();
-    if (!editCodigo.trim() || !editCantidad) return;
-    
-    const cleanCodigo = editCodigo.trim().toUpperCase();
-    const numCantidad = parseInt(editCantidad, 10) || 0;
-    
-    setItems(items.map(item => 
-      item.id === editingId ? { ...item, codigo: cleanCodigo, cantidad: numCantidad } : item
-    ));
-    
-    playSuccessSound();
-    cancelEdit();
+    try {
+      const result = editCode(items, editingId, editCodigo, editCantidad);
+      if (!setItems(result.items)) {
+        setFeedback({ type: 'error', message: 'No se guardó la corrección en este dispositivo.' });
+        return;
+      }
+
+      playSuccessSound();
+      setFeedback({
+        type: 'success',
+        message: result.merged
+          ? `${result.code} unificado: ${result.previousQuantity} → ${result.nextQuantity} unidades.`
+          : `${result.code} actualizado.`
+      });
+      cancelEdit();
+    } catch (error) {
+      setFeedback({ type: 'error', message: error.message });
+    }
   };
 
   const confirmDelete = () => {
     if (itemToDelete) {
-      setItems(items.filter(item => item.id !== itemToDelete));
-      setItemToDelete(null);
+      if (setItems(items.filter(item => item.id !== itemToDelete))) {
+        setItemToDelete(null);
+        setFeedback({ type: 'success', message: 'Código borrado.' });
+      } else {
+        setItemToDelete(null);
+        setFeedback({ type: 'error', message: 'No se pudo borrar el código.' });
+      }
     }
+  };
+
+  const clearAll = () => {
+    if (!setItems([])) {
+      setConfirmClearAll(false);
+      setFeedback({ type: 'error', message: 'No se pudieron borrar los códigos.' });
+      return;
+    }
+    setConfirmClearAll(false);
+    setSearchQuery('');
+    setEditingId(null);
+    setFeedback({ type: 'success', message: 'Se borraron todos los códigos de este pedido.' });
   };
 
   const copyToExcel = () => {
@@ -147,6 +201,12 @@ export default function VentaView({ venta, onBack }) {
       </header>
 
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pb-16 pt-6 sm:gap-6 sm:px-8 sm:pt-10">
+        <StorageAlert message={storageError} />
+        {feedback && (
+          <div role={feedback.type === 'error' ? 'alert' : 'status'} className={`rounded-lg border px-4 py-3 text-sm ${feedback.type === 'error' ? 'border-red-200 bg-red-50 text-red-800' : 'border-[#CFE7EA] bg-[#F2F8F9] text-global-blue'}`}>
+            {feedback.message}
+          </div>
+        )}
         <section className="rounded-xl border border-[#DCE2E7] bg-white p-5 shadow-sm" aria-labelledby="register-title">
           <h2 id="register-title" className="text-lg font-semibold text-global-navy">Registrar código</h2>
           <p className="mb-5 mt-1 text-[13px] leading-relaxed text-global-text">Agrega el código y la cantidad de este pedido.</p>
@@ -168,9 +228,7 @@ export default function VentaView({ venta, onBack }) {
               <label htmlFor="new-quantity" className="mb-2 block text-[13px] font-semibold text-global-navy">Cant.</label>
               <input 
                 id="new-quantity"
-                type="number" 
-                min="1"
-                step="1"
+                type="text"
                 required
                 inputMode="numeric"
                 className="w-full rounded-md border border-[#DCE2E7] px-2 py-3 text-center text-sm font-semibold text-global-navy placeholder-gray-400 focus:border-global-blue focus:outline-none focus:ring-2 focus:ring-global-blue/20"
@@ -190,9 +248,16 @@ export default function VentaView({ venta, onBack }) {
         </section>
 
         <section className="overflow-hidden rounded-xl border border-[#DCE2E7] bg-white shadow-sm" aria-labelledby="registered-title">
-          <div className="border-b border-[#DCE2E7] px-5 py-4">
-            <h2 id="registered-title" className="text-lg font-semibold text-global-navy">Códigos registrados</h2>
-            <p className="mt-1 text-[13px] text-global-text">Consulta y corrige los registros de este pedido.</p>
+          <div className="border-b border-[#DCE2E7] px-5 py-4 sm:flex sm:items-center sm:justify-between sm:gap-3">
+            <div>
+              <h2 id="registered-title" className="text-lg font-semibold text-global-navy">Códigos registrados</h2>
+              <p className="mt-1 text-[13px] text-global-text">Consulta y corrige los registros de este pedido.</p>
+            </div>
+            {items.length > 0 && (
+              <button type="button" onClick={() => setConfirmClearAll(true)} className="mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-md border border-red-200 px-3 text-sm font-medium text-red-600 hover:bg-red-50 sm:mt-0 sm:shrink-0">
+                <Trash2 size={16} aria-hidden="true" /> Borrar todos
+              </button>
+            )}
           </div>
 
           {items.length > 0 && (
@@ -235,9 +300,7 @@ export default function VentaView({ venta, onBack }) {
                           <label htmlFor={`edit-quantity-${item.id}`} className="mb-2 block text-[13px] font-semibold text-global-navy">Cant.</label>
                           <input
                             id={`edit-quantity-${item.id}`}
-                            type="number"
-                            min="1"
-                            step="1"
+                            type="text"
                             required
                             inputMode="numeric"
                             className="w-full rounded-md border border-[#DCE2E7] bg-white px-2 py-3 text-center text-sm font-semibold text-global-navy focus:border-global-blue focus:outline-none focus:ring-2 focus:ring-global-blue/20"
@@ -257,7 +320,7 @@ export default function VentaView({ venta, onBack }) {
                     </form>
                   ) : (
                     <div className="flex min-h-[68px] items-center gap-2 px-3 py-2.5 sm:px-5">
-                      <span className="min-w-0 flex-1 truncate font-mono text-sm font-semibold text-global-navy" title={item.codigo}>{item.codigo}</span>
+                      <span className="min-w-0 flex-1 break-all font-mono text-sm font-semibold text-global-navy">{item.codigo}</span>
                       <span className="min-w-10 rounded-md border border-[#CFE7EA] bg-[#F2F8F9] px-2 py-1 text-center text-sm font-semibold text-global-blue" aria-label={`${item.cantidad} unidades`}>{item.cantidad}</span>
                       <div className="flex items-center">
                         <button type="button" onClick={() => handleEdit(item)} aria-label={`Editar ${item.codigo}`} className="inline-flex h-10 w-10 items-center justify-center rounded-md text-global-blue hover:bg-[#F2F8F9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-global-blue">
@@ -311,6 +374,22 @@ export default function VentaView({ venta, onBack }) {
                 >
                   Borrar
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {confirmClearAll && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-global-navy/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="clear-all-title">
+            <div className="w-full max-w-[340px] overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="flex flex-col items-center gap-3 p-6 text-center">
+                <div className="rounded-full bg-red-50 p-3.5 text-red-500"><Trash2 size={30} aria-hidden="true" /></div>
+                <h2 id="clear-all-title" className="text-lg font-bold text-global-navy">¿Borrar todos los códigos?</h2>
+                <p className="text-sm leading-relaxed text-global-text">Se eliminarán los {items.length} códigos de {venta.name}. El pedido se conservará. Esta acción no se puede deshacer.</p>
+              </div>
+              <div className="flex border-t border-gray-100 bg-gray-50">
+                <button type="button" onClick={() => setConfirmClearAll(false)} className="min-h-12 flex-1 text-sm font-semibold text-global-text hover:bg-gray-100">Cancelar</button>
+                <button type="button" onClick={clearAll} className="min-h-12 flex-1 border-l border-gray-200 text-sm font-semibold text-red-600 hover:bg-red-50">Borrar todos</button>
               </div>
             </div>
           </div>

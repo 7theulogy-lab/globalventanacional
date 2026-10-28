@@ -7,13 +7,14 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon-192.png', 'icon-512.png'],
+      includeAssets: ['icon-192.png', 'icon-512.png', 'globalmarket-logo.png'],
       manifest: {
         name: 'Sistema Venta Nacional',
         short_name: 'VentaNac',
         description: 'Gestión manual de códigos para Venta Nacional',
-        theme_color: '#111827',
-        background_color: '#111827',
+        start_url: '/',
+        theme_color: '#006B83',
+        background_color: '#F4F5F7',
         display: 'standalone',
         icons: [
           {
