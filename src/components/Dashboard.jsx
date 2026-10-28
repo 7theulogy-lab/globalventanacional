@@ -35,71 +35,66 @@ export default function Dashboard({ onSelectVenta }) {
   };
 
   return (
-    /* Contenedor principal: Centrado en PC, pantalla completa en PDA */
-    <div className="min-h-screen bg-gray-200 flex justify-center sm:items-center sm:p-6 font-sans">
-      
-      {/* Marco de la aplicación (Simula móvil en Desktop) */}
-      <div className="w-full max-w-[420px] bg-global-bg min-h-screen sm:min-h-0 sm:h-[800px] sm:rounded-[2rem] sm:shadow-2xl flex flex-col relative overflow-hidden">
-        
-        {/* CABECERA DEGRADADA */}
-        <div className="bg-gradient-to-r from-global-blue to-global-teal px-6 py-7 flex items-center gap-4 text-white shadow-sm shrink-0">
-          <div className="w-16 h-16 bg-transparent rounded-full flex items-center justify-center border-[1.5px] border-white overflow-hidden shrink-0 relative">
-            <div className="text-center leading-none mt-0.5">
-               <span className="text-white font-semibold tracking-tight text-[11px]">global</span><span className="text-white font-light tracking-tight text-[11px]">market</span>
-               <div className="text-white text-[5px] tracking-widest uppercase mt-0.5">Enterprise</div>
-            </div>
-          </div>
-          <h1 className="text-[20px] font-normal tracking-wide text-white/95">Venta Nacional</h1>
+    <div className="min-h-screen bg-global-bg font-sans">
+      <header className="bg-gradient-to-r from-global-blue to-global-teal text-white">
+        <div className="mx-auto flex h-28 max-w-3xl items-center gap-8 px-4 min-[390px]:gap-14 sm:px-8">
+          <img
+            src="/globalmarket-logo.png"
+            alt="Globalmarket Enterprise"
+            className="h-20 w-20 shrink-0 rounded-full object-contain min-[390px]:h-[90px] min-[390px]:w-[90px]"
+          />
+          <h1 className="whitespace-nowrap text-lg font-normal tracking-wide min-[390px]:text-xl">Venta Nacional</h1>
         </div>
+      </header>
 
-        {/* ÁREA DE CONTENIDO CON SCROLL */}
-        <div className="px-5 pt-6 pb-12 flex-1 overflow-y-auto">
+      <main className="mx-auto w-full max-w-3xl px-4 pb-16 pt-6 sm:px-8 sm:pt-10">
           {/* TÍTULOS */}
-          <p className="text-[11px] text-global-text mb-1 uppercase tracking-wide">Gestión y consolidación</p>
-          <h2 className="text-[32px] font-extrabold text-global-navy mb-2 tracking-tight leading-none">Control de Calidad</h2>
-          <p className="text-[13px] text-global-text mb-5 leading-relaxed">Organizador de códigos, cantidades y exportador a excel</p>
+          <p className="mb-2 text-xs text-global-text">Gestión y consolidación</p>
+          <h2 className="mb-2 text-[30px] font-bold leading-tight tracking-tight text-global-navy min-[390px]:text-[32px]">Control de Calidad</h2>
+          <p className="mb-4 text-sm leading-relaxed text-global-text">Organizador de códigos, cantidades y exportador a Excel</p>
           
-          <div className="flex items-center gap-2 text-[13px] text-global-text mb-6">
+          <div className="mb-5 flex items-center gap-2 text-sm text-global-text">
             <Building2 size={16} className="text-global-text opacity-70" />
             <span>Centro de distribución · Renca</span>
           </div>
 
           {/* TARJETA UNIFICADA (FORMULARIO + ESTADO/LISTA) */}
-          <div className="bg-white rounded-xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-gray-100 overflow-hidden">
+          <div className="overflow-hidden rounded-xl border border-[#DCE2E7] bg-white shadow-sm">
             
             {/* SECCIÓN 1: FORMULARIO */}
             <div className="p-5">
-              <h3 className="text-[16px] font-bold text-global-navy mb-1.5">Comienza con un pedido</h3>
-              <p className="text-[13px] text-global-text mb-5 leading-relaxed">Asigna un nombre a la venta para identificarla durante el registro.</p>
+              <h3 className="mb-1.5 text-lg font-semibold text-global-navy">Comienza con un pedido</h3>
+              <p className="mb-5 text-[13px] leading-relaxed text-global-text">Asigna un nombre a la venta para identificarla durante el registro.</p>
               
               <form onSubmit={handleCreate}>
-                <label className="block text-[13px] font-bold text-global-navy mb-2">Nombre del pedido</label>
+                <label htmlFor="new-venta-name" className="mb-2 block text-[13px] font-semibold text-global-navy">Nombre del pedido</label>
                 <input
+                  id="new-venta-name"
                   type="text"
                   placeholder="Ingrese nombre"
-                  className="w-full p-3.5 rounded-lg border border-gray-200 focus:outline-none focus:border-global-teal focus:ring-1 focus:ring-global-teal text-sm font-medium mb-4 placeholder-gray-400 transition-shadow"
+                  className="mb-3 w-full rounded-md border border-[#DCE2E7] px-3.5 py-3 text-sm font-medium placeholder-gray-400 focus:border-global-blue focus:outline-none focus:ring-2 focus:ring-global-blue/20"
                   value={newVentaName}
                   onChange={(e) => setNewVentaName(e.target.value.toUpperCase())}
                 />
                 <button 
                   type="submit" 
-                  className="w-full bg-global-teal text-white py-3.5 rounded-lg font-medium hover:bg-[#528C96] active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-sm"
+                  className="flex w-full items-center justify-center gap-2 rounded-md bg-global-teal py-3 text-sm font-medium text-white transition-colors hover:bg-[#528C96] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-global-blue"
                 >
-                  <Plus size={18} />
+                  <Plus size={16} aria-hidden="true" />
                   Agregar
                 </button>
               </form>
             </div>
 
             {/* SEPARADOR (HR) */}
-            <div className="h-px bg-gray-100 w-full"></div>
+            <div className="h-px w-full bg-[#DCE2E7]"></div>
 
             {/* SECCIÓN 2: ESTADO VACÍO O LISTADO */}
             {ventas.length === 0 ? (
-              <div className="p-8 text-center flex flex-col items-center">
+              <div className="flex flex-col items-center px-5 pb-6 pt-8 text-center sm:pb-10">
                 
                 {/* ILUSTRACIÓN ESTADO VACÍO SVG */}
-                <div className="w-[120px] h-[120px] bg-[#F2F8F9] rounded-full flex items-center justify-center mb-6 relative">
+                <div className="relative mb-7 flex h-[130px] w-[130px] items-center justify-center rounded-full bg-[#EDF5FC]">
                   <svg width="60" height="70" viewBox="0 0 60 70" fill="none" xmlns="http://www.w3.org/2000/svg" className="absolute -ml-3 -mt-3 opacity-90">
                     <rect x="5" y="5" width="40" height="50" rx="4" transform="rotate(-12 5 5)" fill="white" stroke="#006B83" strokeWidth="2"/>
                     <line x1="15" y1="20" x2="35" y2="16" stroke="#006B83" strokeWidth="3" strokeLinecap="round"/>
@@ -114,11 +109,11 @@ export default function Dashboard({ onSelectVenta }) {
                   </svg>
                 </div>
 
-                <h3 className="text-[20px] font-bold text-global-navy mb-2">Sin registros</h3>
-                <p className="text-[13px] text-global-text mb-6 leading-relaxed px-2">
+                <h3 className="mb-2 text-xl font-semibold text-global-navy">Sin registros</h3>
+                <p className="mb-4 max-w-sm px-2 text-[13px] leading-relaxed text-global-text">
                   Ingresa el nombre del pedido arriba para comenzar a registrar sus códigos y cantidades.
                 </p>
-                <div className="flex items-center gap-2 text-[11px] text-global-text/70 bg-gray-50 px-3 py-1.5 rounded-md">
+                <div className="flex items-center gap-2 text-[11px] text-global-text">
                   <FolderOpen size={14} />
                   <span>Cada venta mantiene su propio inventario.</span>
                 </div>
@@ -152,11 +147,11 @@ export default function Dashboard({ onSelectVenta }) {
               </div>
             )}
           </div>
-        </div>
+      </main>
 
         {/* MODAL ELIMINAR */}
         {ventaToDelete && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-global-navy/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-global-navy/40 p-4 backdrop-blur-sm">
             <div className="bg-white rounded-2xl w-full max-w-[320px] overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
               <div className="p-6 text-center flex flex-col items-center gap-3">
                 <div className="bg-red-50 p-3.5 rounded-full text-red-500 mb-1">
@@ -183,7 +178,6 @@ export default function Dashboard({ onSelectVenta }) {
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 }
