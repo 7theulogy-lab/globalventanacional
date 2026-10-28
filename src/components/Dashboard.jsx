@@ -1,8 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import useLocalStorage from '../hooks/useLocalStorage';
 import StorageAlert from './StorageAlert';
-import { createBackup, parseBackup, prepareRestore } from '../utils/backup';
-import { Plus, ChevronRight, Trash2, Edit2, Download, Upload, AlertTriangle, Building2, FolderOpen } from 'lucide-react';
+import { Plus, ChevronRight, Trash2, Edit2, AlertTriangle, Building2, FolderOpen } from 'lucide-react';
 
 export default function Dashboard({ onSelectVenta }) {
   const [ventas, setVentas, storageError] = useLocalStorage('venta_nacional_list', []);
@@ -11,9 +10,6 @@ export default function Dashboard({ onSelectVenta }) {
   const [ventaToRename, setVentaToRename] = useState(null);
   const [renamedValue, setRenamedValue] = useState('');
   const [actionError, setActionError] = useState('');
-  const [actionSuccess, setActionSuccess] = useState('');
-  const [pendingBackup, setPendingBackup] = useState(null);
-  const backupInputRef = useRef(null);
 
   const handleCreate = (e) => {
     e.preventDefault();
@@ -70,62 +66,6 @@ export default function Dashboard({ onSelectVenta }) {
     }
   };
 
-  const downloadBackup = () => {
-    try {
-      const backup = createBackup(ventas, window.localStorage);
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `venta-nacional-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setActionError('');
-      setActionSuccess('Respaldo descargado. Guárdalo fuera de esta PDA.');
-    } catch {
-      setActionError('No se pudo crear el respaldo. Revisa los datos guardados.');
-    }
-  };
-
-  const selectBackup = async event => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    try {
-      const backup = parseBackup(await file.text());
-      setPendingBackup(backup);
-      setActionError('');
-    } catch (error) {
-      setActionError(error.message);
-    }
-  };
-
-  const restoreBackup = () => {
-    if (!pendingBackup) return;
-    const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
-    const restored = prepareRestore(pendingBackup, makeId);
-    const writtenKeys = [];
-    try {
-      for (const { venta, items } of restored) {
-        const key = `venta_items_${venta.id}`;
-        window.localStorage.setItem(key, JSON.stringify(items));
-        writtenKeys.push(key);
-      }
-      if (!setVentas([...restored.map(entry => entry.venta), ...ventas])) {
-        throw new Error('No se pudo guardar la lista de pedidos.');
-      }
-      setPendingBackup(null);
-      setActionError('');
-      setActionSuccess(`${restored.length} pedidos restaurados. Los pedidos existentes se conservaron.`);
-    } catch (error) {
-      writtenKeys.forEach(key => {
-        try { window.localStorage.removeItem(key); } catch { /* El error principal se muestra abajo. */ }
-      });
-      setPendingBackup(null);
-      setActionError(error.message);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-global-bg font-sans">
       <header className="bg-gradient-to-r from-global-blue to-global-teal text-white">
@@ -141,7 +81,6 @@ export default function Dashboard({ onSelectVenta }) {
 
       <main className="mx-auto w-full max-w-3xl px-4 pb-16 pt-6 sm:px-8 sm:pt-10">
           <StorageAlert message={storageError || actionError} />
-          {actionSuccess && <p role="status" className="mb-5 rounded-lg border border-[#CFE7EA] bg-[#F2F8F9] px-4 py-3 text-sm text-global-blue">{actionSuccess}</p>}
           {/* TÍTULOS */}
           <p className="mb-2 text-xs text-global-text">Gestión y consolidación</p>
           <h2 className="mb-2 text-[30px] font-bold leading-tight tracking-tight text-global-navy min-[390px]:text-[32px]">Control de Calidad</h2>
@@ -251,31 +190,7 @@ export default function Dashboard({ onSelectVenta }) {
               </div>
             )}
           </div>
-          <section className="mt-6 rounded-xl border border-[#DCE2E7] bg-white p-5 shadow-sm" aria-labelledby="backup-title">
-            <h2 id="backup-title" className="text-base font-semibold text-global-navy">Respaldo de esta PDA</h2>
-            <p className="mt-1 text-[13px] leading-relaxed text-global-text">Guarda una copia de tus pedidos o recupera una copia anterior. Restaurar agrega los pedidos sin borrar los actuales.</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" onClick={downloadBackup} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#DCE2E7] px-3 text-sm font-medium text-global-blue hover:bg-[#F2F8F9]"><Download size={16} aria-hidden="true" /> Descargar respaldo</button>
-              <button type="button" onClick={() => backupInputRef.current?.click()} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#DCE2E7] px-3 text-sm font-medium text-global-blue hover:bg-[#F2F8F9]"><Upload size={16} aria-hidden="true" /> Restaurar respaldo</button>
-              <input ref={backupInputRef} type="file" accept=".json,application/json" className="sr-only" onChange={selectBackup} aria-label="Archivo de respaldo" />
-            </div>
-          </section>
       </main>
-
-        {pendingBackup && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-global-navy/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="restore-title">
-            <div className="w-full max-w-[360px] overflow-hidden rounded-2xl bg-white shadow-2xl">
-              <div className="p-6">
-                <h2 id="restore-title" className="text-lg font-bold text-global-navy">Restaurar respaldo</h2>
-                <p className="mt-2 text-sm leading-relaxed text-global-text">Se agregarán {pendingBackup.pedidos.length} pedidos a esta PDA. Los pedidos actuales se conservarán.</p>
-              </div>
-              <div className="flex border-t border-gray-100 bg-gray-50">
-                <button type="button" onClick={() => setPendingBackup(null)} className="min-h-12 flex-1 text-sm font-semibold text-global-text hover:bg-gray-100">Cancelar</button>
-                <button type="button" onClick={restoreBackup} className="min-h-12 flex-1 border-l border-gray-200 text-sm font-semibold text-global-blue hover:bg-[#F2F8F9]">Restaurar</button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {ventaToRename && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-global-navy/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="rename-title">

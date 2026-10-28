@@ -2,21 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Building2, ChevronRight, Copy, Edit2, FolderOpen, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { supabase, displayCloudError, requireData } from './lib/supabase';
 import { normalizeCode, parseQuantity } from './utils/inventory';
-import { BACKUP_FORMAT, createBackup, parseBackup } from './utils/backup';
+import { createBackup, parseBackup } from './utils/backup';
 import { playSuccessSound } from './utils/audio';
-
-const initialUrl = new URL(window.location.href);
-const token = new URLSearchParams(initialUrl.hash.slice(1)).get('access') ?? initialUrl.searchParams.get('access');
-if (initialUrl.searchParams.has('access') && token) {
-  initialUrl.searchParams.delete('access');
-  initialUrl.hash = new URLSearchParams({ access: token }).toString();
-  window.history.replaceState(window.history.state, '', initialUrl);
-}
 
 function linkFor(orderId) {
   const url = new URL(window.location.href);
   if (orderId) url.searchParams.set('order', orderId);
   else url.searchParams.delete('order');
+  url.searchParams.delete('access');
+  url.hash = '';
   return url.toString();
 }
 
@@ -38,10 +32,9 @@ export default function CloudApp() {
   const requestNumber = useRef(0);
 
   const refresh = useCallback(async () => {
-    if (!token) { setLoading(false); return; }
     const request = ++requestNumber.current;
     try {
-      const data = await requireData(supabase.rpc('workspace_snapshot', { p_token: token }));
+      const data = await requireData(supabase.rpc('shared_snapshot'));
       if (request === requestNumber.current) {
         setOrders(data.orders ?? []);
         setError('');
@@ -73,8 +66,8 @@ export default function CloudApp() {
     if (busy) return false;
     setBusy(true);
     try {
-      await requireData(supabase.rpc('workspace_mutate', {
-        p_token: token, p_action: action, p_payload: payload
+      await requireData(supabase.rpc('shared_mutate', {
+        p_action: action, p_payload: payload
       }));
       await refresh();
       return true;
@@ -99,8 +92,6 @@ export default function CloudApp() {
     }
   }, [loading, selectedId, selected, error]);
 
-  if (!token) return <div className="min-h-screen bg-global-bg"><Header><div className="flex items-center gap-5"><img src="/globalmarket-logo.png" alt="Globalmarket Enterprise" className="h-16 w-16 rounded-full" /><h1 className="text-xl">Venta Nacional</h1></div></Header><main className="mx-auto max-w-3xl px-4 py-8 sm:px-8"><Notice error message="Abre el enlace compartido de Venta Nacional para ver y registrar pedidos." /></main></div>;
-
   return <div className="min-h-screen bg-global-bg font-sans">
     {selectedId && selected ? <OrderScreen order={selected} onBack={() => navigate(null)} mutate={mutate} busy={busy} error={error} clearError={() => setError('')} />
       : <HomeScreen orders={orders} loading={loading} error={error} busy={busy} mutate={mutate} onSelect={navigate} refresh={refresh} />}
@@ -121,13 +112,12 @@ function HomeScreen({ orders, loading, error, busy, mutate, onSelect, refresh })
   });
   const [importedIds, setImportedIds] = useState(() => {
     try {
-      const value = JSON.parse(window.localStorage.getItem(`venta_nacional_imported_${token}`) ?? '[]');
+      const value = JSON.parse(window.localStorage.getItem('venta_nacional_imported_shared') ?? '[]');
       return Array.isArray(value) ? value : [];
     }
     catch { return []; }
   });
   const [importing, setImporting] = useState(false);
-  const backupInput = useRef(null);
   const pendingLocal = localOrders.filter(order => !importedIds.includes(order.id));
 
   const importOrders = async (backup, ids = []) => {
@@ -135,10 +125,10 @@ function HomeScreen({ orders, loading, error, busy, mutate, onSelect, refresh })
     setImporting(true);
     try {
       const validated = parseBackup(JSON.stringify(backup));
-      const count = await requireData(supabase.rpc('workspace_import', { p_token: token, p_orders: validated.pedidos }));
+      const count = await requireData(supabase.rpc('shared_import', { p_orders: validated.pedidos }));
       if (ids.length) {
         const next = [...importedIds, ...ids];
-        window.localStorage.setItem(`venta_nacional_imported_${token}`, JSON.stringify(next));
+        window.localStorage.setItem('venta_nacional_imported_shared', JSON.stringify(next));
         setImportedIds(next);
       }
       await refresh();
@@ -152,33 +142,6 @@ function HomeScreen({ orders, loading, error, busy, mutate, onSelect, refresh })
       importOrders(backup, pendingLocal.map(order => order.id));
     } catch { setMessage('No se pudieron leer los pedidos guardados en esta PDA.'); }
   };
-  const importFile = async event => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    try { await importOrders(parseBackup(await file.text())); }
-    catch (cause) { setMessage(cause.message); }
-  };
-  const downloadBackup = () => {
-    const backup = {
-      format: BACKUP_FORMAT,
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      pedidos: orders.map(order => ({
-        name: order.name,
-        date: new Date(order.created_at).toLocaleDateString('es-CL'),
-        items: order.items.map(item => ({ codigo: item.code, cantidad: item.quantity }))
-      }))
-    };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `venta-nacional-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setMessage('Respaldo descargado.');
-  };
-
   const create = async event => {
     event.preventDefault();
     const clean = name.trim();
@@ -187,7 +150,7 @@ function HomeScreen({ orders, loading, error, busy, mutate, onSelect, refresh })
     if (await mutate('create_order', { name: clean })) {
       setName('');
       try {
-        const data = await requireData(supabase.rpc('workspace_snapshot', { p_token: token }));
+        const data = await requireData(supabase.rpc('shared_snapshot'));
         const created = data.orders.find(order => !oldIds.has(order.id));
         if (created) onSelect(created.id);
         else setMessage('Pedido agregado. Selecciónalo en la lista.');
@@ -230,7 +193,7 @@ function HomeScreen({ orders, loading, error, busy, mutate, onSelect, refresh })
       </div>
       <div className="mt-6 flex flex-wrap gap-2"><button onClick={copyLink} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#DCE2E7] bg-white px-3 text-sm text-global-blue"><Copy size={16} /> Copiar enlace compartido</button><button onClick={() => refresh()} className="min-h-10 rounded-md border border-[#DCE2E7] bg-white px-3 text-sm text-global-blue">Actualizar</button></div>
       <p className="mt-3 text-xs text-global-text">Los pedidos se actualizan automáticamente en todos los dispositivos cada pocos segundos. Quien tenga el enlace puede modificarlos.</p>
-      <section className="mt-6 rounded-xl border border-[#DCE2E7] bg-white p-5 shadow-sm"><h2 className="text-base font-semibold text-global-navy">Respaldo y pedidos anteriores</h2><p className="mt-1 text-[13px] text-global-text">Descarga una copia compartida o agrega pedidos que estaban guardados en esta PDA. La copia local se conserva.</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={downloadBackup} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#DCE2E7] px-3 text-sm text-global-blue"><Copy size={16} /> Descargar respaldo</button>{pendingLocal.length > 0 && <button onClick={importLocal} disabled={importing} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#DCE2E7] px-3 text-sm text-global-blue disabled:opacity-50"><Upload size={16} /> Importar {pendingLocal.length} de esta PDA</button>}<button disabled={importing} onClick={() => backupInput.current?.click()} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#DCE2E7] px-3 text-sm text-global-blue disabled:opacity-50"><Upload size={16} /> Importar respaldo JSON</button><input ref={backupInput} type="file" accept=".json,application/json" className="sr-only" onChange={importFile} aria-label="Archivo de respaldo" /></div></section>
+      {pendingLocal.length > 0 && <button onClick={importLocal} disabled={importing} className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-md border border-[#DCE2E7] bg-white px-3 text-sm text-global-blue disabled:opacity-50"><Upload size={16} /> Incorporar {pendingLocal.length} pedidos guardados en esta PDA</button>}
     </main>
     {edit && <Modal title="Renombrar pedido" onCancel={() => setEdit(null)} onConfirm={rename} confirm="Guardar nombre" busy={busy}><label htmlFor="rename-order" className="mb-2 block text-sm font-semibold text-global-navy">Nombre del pedido</label><input id="rename-order" autoFocus required maxLength={120} value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value.toUpperCase() })} className="w-full rounded-md border border-[#DCE2E7] px-3 py-3 text-sm" /></Modal>}
     {remove && <Modal title="¿Eliminar pedido?" onCancel={() => setRemove(null)} onConfirm={deleteOrder} confirm="Eliminar" danger busy={busy}><p className="text-sm text-global-text">Se borrarán también todos los códigos de {remove.name}. Esta acción no se puede deshacer.</p></Modal>}
