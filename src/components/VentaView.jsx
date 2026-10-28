@@ -14,9 +14,8 @@ export default function VentaView({ venta, onBack }) {
   const [editCodigo, setEditCodigo] = useState('');
   const [editCantidad, setEditCantidad] = useState('');
 
-  // Estados para Modales Custom
   const [itemToDelete, setItemToDelete] = useState(null);
-  const [alertInfo, setAlertInfo] = useState(null); // { type: 'success'|'error', msg: string }
+  const [alertInfo, setAlertInfo] = useState(null);
 
   const codigoInputRef = useRef(null);
   const editCodigoRef = useRef(null);
@@ -34,7 +33,6 @@ export default function VentaView({ venta, onBack }) {
   }, []);
 
   useEffect(() => {
-    // Si no hay modales abiertos, mantener el foco
     if (!editingId && !itemToDelete && !alertInfo) {
       setTimeout(() => codigoInputRef.current?.focus(), 50);
     } else if (editingId) {
@@ -119,195 +117,202 @@ export default function VentaView({ venta, onBack }) {
   const totalItems = items.reduce((acc, curr) => acc + curr.cantidad, 0);
 
   return (
-    <div className="max-w-md mx-auto bg-gray-900 min-h-screen flex flex-col text-gray-100 relative">
-      <header className="bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-        <div className="flex items-center gap-2">
-          <button onClick={onBack} className="p-2 -ml-2 rounded-full hover:bg-gray-700 transition-colors text-gray-300">
-            <ArrowLeft size={24} />
-          </button>
-          <div className="flex flex-col">
-            <h2 className="font-bold text-gray-100 leading-tight truncate max-w-[180px]">{venta.name}</h2>
-            <p className="text-xs text-blue-400 font-semibold">{items.length} Filas | {totalItems} Unds.</p>
-          </div>
-        </div>
-        <button 
-          onClick={copyToExcel}
-          className="flex items-center gap-2 bg-green-900/40 text-green-400 border border-green-800/50 px-3 py-2 rounded-lg font-bold hover:bg-green-900/60 active:scale-95 transition-transform"
-        >
-          <Copy size={18} />
-          <span className="text-sm">Excel</span>
-        </button>
-      </header>
-
-      <div className="p-4 flex-1 flex flex-col gap-4">
-        <form onSubmit={handleSubmit} className="bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-700 flex gap-2 items-end">
-          <div className="flex-1">
-            <label className="block text-xs font-bold text-gray-400 mb-1">Código</label>
-            <input 
-              ref={codigoInputRef}
-              type="text" 
-              className="w-full bg-gray-900 border border-gray-700 p-2.5 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono font-bold placeholder-gray-600"
-              value={codigo}
-              onChange={(e) => setCodigo(e.target.value.toUpperCase())}
-              placeholder="Ej: IP8194"
-            />
-          </div>
-          <div className="w-24">
-            <label className="block text-xs font-bold text-gray-400 mb-1">Cant.</label>
-            <input 
-              type="number" 
-              min="1"
-              className="w-full bg-gray-900 border border-gray-700 p-2.5 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold placeholder-gray-600"
-              value={cantidad}
-              onChange={(e) => setCantidad(e.target.value)}
-              placeholder="0"
-            />
+    <div className="min-h-screen bg-gray-200 flex justify-center sm:items-center sm:p-6 font-sans">
+      <div className="w-full max-w-[420px] bg-global-bg min-h-screen sm:min-h-0 sm:h-[800px] sm:rounded-[2rem] sm:shadow-2xl flex flex-col relative overflow-hidden">
+        
+        {/* HEADER */}
+        <header className="bg-white border-b border-gray-100 p-4 flex items-center justify-between sticky top-0 z-10 shadow-sm shrink-0">
+          <div className="flex items-center gap-2">
+            <button onClick={onBack} className="p-2 -ml-2 rounded-full hover:bg-gray-50 transition-colors text-global-navy">
+              <ArrowLeft size={22} />
+            </button>
+            <div className="flex flex-col">
+              <h2 className="text-[16px] font-bold text-global-navy leading-tight truncate max-w-[180px]">{venta.name}</h2>
+              <p className="text-[11px] text-global-teal font-semibold">{items.length} Filas | {totalItems} Unds.</p>
+            </div>
           </div>
           <button 
-            type="submit" 
-            className="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 active:scale-95 transition-transform"
+            onClick={copyToExcel}
+            className="flex items-center gap-1.5 bg-green-50 text-green-600 px-3 py-2 rounded-lg font-bold hover:bg-green-100 active:scale-95 transition-transform"
           >
-            <Plus size={20} />
+            <Copy size={16} />
+            <span className="text-[13px]">Excel</span>
           </button>
-        </form>
+        </header>
 
-        <div className="relative">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input 
-            type="text" 
-            placeholder="Buscar código en la lista..."
-            className="w-full bg-gray-800 border border-gray-700 p-3 pl-10 rounded-xl shadow-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm font-medium placeholder-gray-500"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
+        <div className="p-5 flex-1 flex flex-col gap-5 overflow-y-auto">
+          {/* FORMULARIO INGRESO */}
+          <form onSubmit={handleSubmit} className="bg-white p-4 rounded-xl shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] border border-gray-100 flex gap-2 items-end shrink-0">
+            <div className="flex-1">
+              <label className="block text-[12px] font-bold text-global-navy mb-1.5">Código</label>
+              <input 
+                ref={codigoInputRef}
+                type="text" 
+                className="w-full bg-gray-50 border border-gray-200 p-3 rounded-lg text-global-navy focus:outline-none focus:border-global-teal focus:ring-1 focus:ring-global-teal uppercase font-mono font-bold text-sm placeholder-gray-400"
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value.toUpperCase())}
+                placeholder="Ej: IP8194"
+              />
+            </div>
+            <div className="w-[85px]">
+              <label className="block text-[12px] font-bold text-global-navy mb-1.5 text-center">Cant.</label>
+              <input 
+                type="number" 
+                min="1"
+                className="w-full bg-gray-50 border border-gray-200 p-3 rounded-lg text-global-navy focus:outline-none focus:border-global-teal focus:ring-1 focus:ring-global-teal text-center font-bold text-sm placeholder-gray-400"
+                value={cantidad}
+                onChange={(e) => setCantidad(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <button 
+              type="submit" 
+              className="bg-global-teal text-white p-3.5 rounded-lg hover:bg-[#528C96] active:scale-95 transition-transform flex items-center justify-center shadow-sm"
+            >
+              <Plus size={18} />
+            </button>
+          </form>
 
-        <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 flex-1 flex flex-col overflow-hidden">
-          <div className="grid grid-cols-[1fr_70px_80px] gap-2 p-3 bg-gray-900 border-b border-gray-700 text-xs font-bold text-gray-400 uppercase">
-            <div>Código</div>
-            <div className="text-center">Cant.</div>
-            <div className="text-center">Acción</div>
+          {/* BUSCADOR */}
+          <div className="relative shrink-0">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input 
+              type="text" 
+              placeholder="Buscar código en la lista..."
+              className="w-full bg-white border border-gray-200 p-3.5 pl-10 rounded-xl shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] text-global-navy focus:outline-none focus:border-global-teal focus:ring-1 focus:ring-global-teal text-[13px] font-medium placeholder-gray-400 transition-shadow"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-          
-          <div className="overflow-y-auto pb-10">
-            {filteredItems.map(item => (
-              <div key={item.id} className="border-b border-gray-700/50 last:border-0">
-                {editingId === item.id ? (
-                  <form onSubmit={saveEdit} className="grid grid-cols-[1fr_70px_80px] gap-2 p-2 bg-yellow-900/20 items-center border-l-4 border-yellow-500">
-                    <input 
-                      ref={editCodigoRef}
-                      type="text" 
-                      className="border border-yellow-700/50 p-1.5 rounded font-mono text-sm bg-gray-900 text-white w-full focus:outline-none focus:border-yellow-500"
-                      value={editCodigo}
-                      onChange={(e) => setEditCodigo(e.target.value.toUpperCase())}
-                    />
-                    <input 
-                      type="number"
-                      min="1"
-                      className="border border-yellow-700/50 p-1.5 rounded text-center text-sm font-bold bg-gray-900 text-white w-full focus:outline-none focus:border-yellow-500"
-                      value={editCantidad}
-                      onChange={(e) => setEditCantidad(e.target.value)}
-                    />
-                    <div className="flex items-center justify-center gap-1">
-                      <button type="submit" className="text-green-400 bg-green-900/30 p-1.5 rounded-lg hover:bg-green-900/60">
-                        <Save size={16} />
-                      </button>
-                      <button type="button" onClick={cancelEdit} className="text-gray-400 bg-gray-700 p-1.5 rounded-lg hover:bg-gray-600">
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <div className="grid grid-cols-[1fr_70px_80px] gap-2 p-3 items-center hover:bg-gray-700/50 transition-colors">
-                    <div className="font-mono font-bold text-gray-200 truncate">{item.codigo}</div>
-                    <div className="text-center font-bold text-blue-300 bg-blue-900/40 py-1 px-2 rounded-md">
-                      {item.cantidad}
-                    </div>
-                    <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => handleEdit(item)} className="text-blue-400 hover:bg-blue-900/30 p-1.5 rounded-md transition-colors">
-                        <Edit2 size={16} />
-                      </button>
-                      <button onClick={() => setItemToDelete(item.id)} className="text-red-400 hover:bg-red-900/30 p-1.5 rounded-md transition-colors">
-                        <Trash size={16} />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+
+          {/* LISTADO */}
+          <div className="bg-white rounded-xl shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] border border-gray-100 flex-1 flex flex-col overflow-hidden">
+            <div className="grid grid-cols-[1fr_70px_80px] gap-2 p-3 bg-gray-50 border-b border-gray-100 text-[11px] font-bold text-global-text uppercase tracking-wide">
+              <div className="pl-1">Código</div>
+              <div className="text-center">Cant.</div>
+              <div className="text-center">Acción</div>
+            </div>
             
-            {filteredItems.length === 0 && (
-              <div className="p-10 text-center text-gray-500 flex flex-col items-center gap-2">
-                <Search size={32} className="opacity-20" />
-                <span className="text-sm font-medium">
-                  {searchQuery ? 'Código no encontrado.' : 'Ingresa tu primer producto.'}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* MODAL CONFIRMACIÓN DE ELIMINAR FILA */}
-      {itemToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-gray-800 rounded-2xl w-full max-w-xs border border-gray-700 overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="p-6 text-center flex flex-col items-center gap-3">
-              <div className="bg-red-900/30 p-3 rounded-full text-red-500 mb-2">
-                <Trash size={32} />
-              </div>
-              <h3 className="text-lg font-bold text-white">¿Borrar código?</h3>
-              <p className="text-sm text-gray-400">Esta fila será eliminada de tu lista actual.</p>
-            </div>
-            <div className="flex border-t border-gray-700">
-              <button 
-                onClick={() => setItemToDelete(null)}
-                className="flex-1 py-4 text-gray-300 font-bold bg-gray-800 hover:bg-gray-700 transition-colors"
-              >
-                Cancelar
-              </button>
-              <div className="w-px bg-gray-700"></div>
-              <button 
-                onClick={confirmDelete}
-                className="flex-1 py-4 text-red-400 font-bold bg-gray-800 hover:bg-gray-700 hover:text-red-300 transition-colors"
-              >
-                Borrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL ALERTA (EJ: EXCEL COPIADO) */}
-      {alertInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-gray-800 rounded-2xl w-full max-w-xs border border-gray-700 overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="p-6 text-center flex flex-col items-center gap-3">
-              {alertInfo.type === 'success' ? (
-                <div className="bg-green-900/30 p-3 rounded-full text-green-500 mb-2">
-                  <CheckCircle2 size={32} />
+            <div className="overflow-y-auto pb-6 flex-1">
+              {filteredItems.map(item => (
+                <div key={item.id} className="border-b border-gray-50 last:border-0">
+                  {editingId === item.id ? (
+                    <form onSubmit={saveEdit} className="grid grid-cols-[1fr_70px_80px] gap-2 p-2 bg-blue-50/50 items-center border-l-[3px] border-global-teal">
+                      <input 
+                        ref={editCodigoRef}
+                        type="text" 
+                        className="border border-blue-200 p-2 rounded-lg font-mono text-[13px] bg-white text-global-navy w-full focus:outline-none focus:border-global-teal font-bold uppercase"
+                        value={editCodigo}
+                        onChange={(e) => setEditCodigo(e.target.value.toUpperCase())}
+                      />
+                      <input 
+                        type="number"
+                        min="1"
+                        className="border border-blue-200 p-2 rounded-lg text-center text-[13px] font-bold bg-white text-global-navy w-full focus:outline-none focus:border-global-teal"
+                        value={editCantidad}
+                        onChange={(e) => setEditCantidad(e.target.value)}
+                      />
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button type="submit" className="text-white bg-global-teal p-2 rounded-lg hover:bg-[#528C96] shadow-sm">
+                          <Save size={15} />
+                        </button>
+                        <button type="button" onClick={cancelEdit} className="text-gray-500 bg-gray-200 p-2 rounded-lg hover:bg-gray-300">
+                          <X size={15} />
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="grid grid-cols-[1fr_70px_80px] gap-2 p-3.5 items-center hover:bg-gray-50/50 transition-colors">
+                      <div className="font-mono font-bold text-global-navy truncate pl-1 text-[14px]">{item.codigo}</div>
+                      <div className="text-center font-bold text-global-teal bg-teal-50 py-1 px-2 rounded-md text-[13px] border border-teal-100">
+                        {item.cantidad}
+                      </div>
+                      <div className="flex items-center justify-center gap-2">
+                        <button onClick={() => handleEdit(item)} className="text-global-teal hover:bg-teal-50 p-2 rounded-lg transition-colors">
+                          <Edit2 size={16} />
+                        </button>
+                        <button onClick={() => setItemToDelete(item.id)} className="text-red-400 hover:bg-red-50 p-2 rounded-lg transition-colors">
+                          <Trash size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="bg-red-900/30 p-3 rounded-full text-red-500 mb-2">
-                  <AlertCircle size={32} />
+              ))}
+              
+              {filteredItems.length === 0 && (
+                <div className="p-10 text-center text-gray-400 flex flex-col items-center gap-3">
+                  <Search size={32} className="opacity-20" />
+                  <span className="text-[13px] font-medium text-global-text">
+                    {searchQuery ? 'Código no encontrado.' : 'Ingresa tu primer producto.'}
+                  </span>
                 </div>
               )}
-              <h3 className="text-lg font-bold text-white">
-                {alertInfo.type === 'success' ? '¡Éxito!' : 'Error'}
-              </h3>
-              <p className="text-sm text-gray-400">{alertInfo.msg}</p>
-            </div>
-            <div className="flex border-t border-gray-700">
-              <button 
-                onClick={() => setAlertInfo(null)}
-                className="flex-1 py-4 text-blue-400 font-bold bg-gray-800 hover:bg-gray-700 transition-colors"
-              >
-                Aceptar
-              </button>
             </div>
           </div>
         </div>
-      )}
+
+        {/* MODAL BORRAR FILA */}
+        {itemToDelete && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-global-navy/40 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-[300px] overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+              <div className="p-6 text-center flex flex-col items-center gap-3">
+                <div className="bg-red-50 p-3.5 rounded-full text-red-500 mb-1">
+                  <Trash size={32} />
+                </div>
+                <h3 className="text-[18px] font-bold text-global-navy">¿Borrar código?</h3>
+                <p className="text-[13px] text-global-text">Esta fila será eliminada de tu lista.</p>
+              </div>
+              <div className="flex border-t border-gray-100 bg-gray-50">
+                <button 
+                  onClick={() => setItemToDelete(null)}
+                  className="flex-1 py-4 text-[14px] text-global-text font-bold hover:bg-gray-100 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <div className="w-px bg-gray-200"></div>
+                <button 
+                  onClick={confirmDelete}
+                  className="flex-1 py-4 text-[14px] text-red-500 font-bold hover:bg-red-50 transition-colors"
+                >
+                  Borrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL ALERTA EXCEL */}
+        {alertInfo && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-global-navy/40 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-[300px] overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+              <div className="p-6 text-center flex flex-col items-center gap-3">
+                {alertInfo.type === 'success' ? (
+                  <div className="bg-green-50 p-3.5 rounded-full text-green-500 mb-1">
+                    <CheckCircle2 size={32} />
+                  </div>
+                ) : (
+                  <div className="bg-red-50 p-3.5 rounded-full text-red-500 mb-1">
+                    <AlertCircle size={32} />
+                  </div>
+                )}
+                <h3 className="text-[18px] font-bold text-global-navy">
+                  {alertInfo.type === 'success' ? '¡Éxito!' : 'Error'}
+                </h3>
+                <p className="text-[13px] text-global-text">{alertInfo.msg}</p>
+              </div>
+              <div className="flex border-t border-gray-100 bg-gray-50">
+                <button 
+                  onClick={() => setAlertInfo(null)}
+                  className="flex-1 py-4 text-[14px] text-global-teal font-bold hover:bg-gray-100 transition-colors"
+                >
+                  Aceptar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
