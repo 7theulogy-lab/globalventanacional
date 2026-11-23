@@ -22,6 +22,9 @@ pnpm build
 - Si se corrige un código y pasa a coincidir con otro, ambas cantidades se fusionan en una sola fila.
 - «Copiar para Excel» copia una tabla tabulada para pegarla en Excel.
 - HOME permite renombrar y borrar pedidos. En la pantalla de códigos se puede borrar una fila o todas, con confirmación.
+- Cada pedido tiene hojas «Registro» y «Picking», accesibles por pestañas o deslizando horizontalmente en una PDA.
+- La hoja Picking carga un CSV con columnas `Código` y `Cantidad`; la columna «Físico» se calcula con lo registrado.
+- Un picking completo se muestra en verde claro, uno excedido en rojo claro y los códigos registrados fuera del picking en amarillo.
 
 ## Pedidos compartidos entre PDA y PC
 

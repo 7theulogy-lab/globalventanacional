@@ -13,6 +13,10 @@ export function createBackup(ventas, storage) {
       items: JSON.parse(storage.getItem(`venta_items_${venta.id}`) ?? '[]').map(item => ({
         codigo: item.codigo,
         cantidad: item.cantidad
+      })),
+      picking: JSON.parse(storage.getItem(`venta_picking_${venta.id}`) ?? '[]').map(item => ({
+        codigo: item.code,
+        cantidad: item.quantity
       }))
     }))
   };
@@ -38,6 +42,13 @@ export function parseBackup(text) {
       normalizeCode(item.codigo);
       parseQuantity(item.cantidad);
     }
+    if (pedido.picking !== undefined && !Array.isArray(pedido.picking)) {
+      throw new Error('El respaldo contiene un picking inválido.');
+    }
+    for (const item of pedido.picking ?? []) {
+      normalizeCode(item.codigo);
+      parseQuantity(item.cantidad);
+    }
   }
   return data;
 }
@@ -53,6 +64,10 @@ export function prepareRestore(backup, makeId) {
     for (const item of pedido.items) {
       items = addCode(items, item.codigo, item.cantidad, makeId()).items;
     }
-    return { venta, items };
+    const picking = (pedido.picking ?? []).map(item => ({
+      code: normalizeCode(item.codigo),
+      quantity: parseQuantity(item.cantidad)
+    }));
+    return { venta, items, picking };
   });
 }

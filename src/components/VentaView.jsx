@@ -2,11 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Search, Package, Edit2, Copy, Save, X, Plus, Trash, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
 import useLocalStorage from '../hooks/useLocalStorage';
 import StorageAlert from './StorageAlert';
+import PickingSheet from './PickingSheet';
 import { playSuccessSound } from '../utils/audio';
 import { addCode, editCode, consolidateItems } from '../utils/inventory';
 
 export default function VentaView({ venta, onBack }) {
   const [items, setItems, storageError] = useLocalStorage(`venta_items_${venta.id}`, []);
+  const [picking, setPicking, pickingStorageError] = useLocalStorage(`venta_picking_${venta.id}`, []);
+  const [activeSheet, setActiveSheet] = useState('registro');
   const [searchQuery, setSearchQuery] = useState('');
   
   const [codigo, setCodigo] = useState('');
@@ -24,6 +27,7 @@ export default function VentaView({ venta, onBack }) {
   const codigoInputRef = useRef(null);
   const editCodigoRef = useRef(null);
   const initializedHistoryRef = useRef(false);
+  const touchStartRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -61,12 +65,12 @@ export default function VentaView({ venta, onBack }) {
   }, [items, venta.id]);
 
   useEffect(() => {
-    if (!editingId && !itemToDelete && !confirmClearAll && !alertInfo) {
+    if (activeSheet === 'registro' && !editingId && !itemToDelete && !confirmClearAll && !alertInfo) {
       setTimeout(() => codigoInputRef.current?.focus(), 50);
     } else if (editingId) {
       setTimeout(() => editCodigoRef.current?.focus(), 50);
     }
-  }, [editingId, itemToDelete, confirmClearAll, alertInfo]);
+  }, [activeSheet, editingId, itemToDelete, confirmClearAll, alertInfo]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -80,8 +84,10 @@ export default function VentaView({ venta, onBack }) {
 
       playSuccessSound();
       setFeedback({
-        type: 'success',
-        message: result.merged
+        type: picking.length && !picking.some(row => row.code === result.code) ? 'warning' : 'success',
+        message: picking.length && !picking.some(row => row.code === result.code)
+          ? `${result.code} no existe en el picking. Revisa este código.`
+          : result.merged
           ? `${result.code} ya existía: ${result.previousQuantity} → ${result.nextQuantity} unidades.`
           : `${result.code} agregado: ${result.nextQuantity} unidades.`
       });
@@ -119,8 +125,10 @@ export default function VentaView({ venta, onBack }) {
 
       playSuccessSound();
       setFeedback({
-        type: 'success',
-        message: result.merged
+        type: picking.length && !picking.some(row => row.code === result.code) ? 'warning' : 'success',
+        message: picking.length && !picking.some(row => row.code === result.code)
+          ? `${result.code} no existe en el picking. Revisa este código.`
+          : result.merged
           ? `${result.code} unificado: ${result.previousQuantity} → ${result.nextQuantity} unidades.`
           : `${result.code} actualizado.`
       });
@@ -170,6 +178,22 @@ export default function VentaView({ venta, onBack }) {
   );
 
   const totalItems = items.reduce((acc, curr) => acc + curr.cantidad, 0);
+  const pickingCodes = new Set(picking.map(row => row.code));
+  const replacePicking = rows => setPicking(rows);
+  const handleTouchStart = event => {
+    const touch = event.changedTouches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+  const handleTouchEnd = event => {
+    if (!touchStartRef.current) return;
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - touchStartRef.current.x;
+    const deltaY = touch.clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+    if (Math.abs(deltaX) < 60 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
+    if (deltaX < 0 && activeSheet === 'registro') setActiveSheet('picking');
+    if (deltaX > 0 && activeSheet === 'picking') setActiveSheet('registro');
+  };
 
   return (
     <div className="min-h-screen bg-global-bg font-sans">
@@ -200,13 +224,14 @@ export default function VentaView({ venta, onBack }) {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pb-16 pt-6 sm:gap-6 sm:px-8 sm:pt-10">
-        <StorageAlert message={storageError} />
+      <main onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pb-16 pt-6 sm:gap-6 sm:px-8 sm:pt-10">
+        <StorageAlert message={storageError || pickingStorageError} />
         {feedback && (
-          <div role={feedback.type === 'error' ? 'alert' : 'status'} className={`rounded-lg border px-4 py-3 text-sm ${feedback.type === 'error' ? 'border-red-200 bg-red-50 text-red-800' : 'border-[#CFE7EA] bg-[#F2F8F9] text-global-blue'}`}>
+          <div role={feedback.type === 'error' ? 'alert' : 'status'} className={`rounded-lg border px-4 py-3 text-sm ${feedback.type === 'error' ? 'border-red-200 bg-red-50 text-red-800' : feedback.type === 'warning' ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-[#CFE7EA] bg-[#F2F8F9] text-global-blue'}`}>
             {feedback.message}
           </div>
         )}
+        {activeSheet === 'registro' ? <>
         <section className="rounded-xl border border-[#DCE2E7] bg-white p-5 shadow-sm" aria-labelledby="register-title">
           <h2 id="register-title" className="text-lg font-semibold text-global-navy">Registrar código</h2>
           <p className="mb-5 mt-1 text-[13px] leading-relaxed text-global-text">Agrega el código y la cantidad de este pedido.</p>
@@ -282,7 +307,7 @@ export default function VentaView({ venta, onBack }) {
               {filteredItems.map(item => (
                 <li key={item.id}>
                   {editingId === item.id ? (
-                    <form onSubmit={saveEdit} className="border-l-[3px] border-global-blue bg-[#F2F8F9] p-4">
+                    <form onSubmit={saveEdit} className={`border-l-[3px] p-4 ${picking.length && !pickingCodes.has(item.codigo) ? 'border-amber-400 bg-amber-50' : 'border-global-blue bg-[#F2F8F9]'}`}>
                       <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-3">
                         <div className="min-w-0">
                           <label htmlFor={`edit-code-${item.id}`} className="mb-2 block text-[13px] font-semibold text-global-navy">Código</label>
@@ -319,8 +344,8 @@ export default function VentaView({ venta, onBack }) {
                       </div>
                     </form>
                   ) : (
-                    <div className="flex min-h-[68px] items-center gap-2 px-3 py-2.5 sm:px-5">
-                      <span className="min-w-0 flex-1 break-all font-mono text-sm font-semibold text-global-navy">{item.codigo}</span>
+                    <div className={`flex min-h-[68px] items-center gap-2 border-l-[3px] px-3 py-2.5 sm:px-5 ${picking.length && !pickingCodes.has(item.codigo) ? 'border-amber-400 bg-amber-50' : 'border-transparent'}`}>
+                      <span className="min-w-0 flex-1 break-all font-mono text-sm font-semibold text-global-navy">{item.codigo}{picking.length && !pickingCodes.has(item.codigo) && <small className="mt-1 block font-sans text-[11px] font-semibold text-amber-800">Fuera de picking</small>}</span>
                       <span className="min-w-10 rounded-md border border-[#CFE7EA] bg-[#F2F8F9] px-2 py-1 text-center text-sm font-semibold text-global-blue" aria-label={`${item.cantidad} unidades`}>{item.cantidad}</span>
                       <div className="flex items-center">
                         <button type="button" onClick={() => handleEdit(item)} aria-label={`Editar ${item.codigo}`} className="inline-flex h-10 w-10 items-center justify-center rounded-md text-global-blue hover:bg-[#F2F8F9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-global-blue">
@@ -347,6 +372,12 @@ export default function VentaView({ venta, onBack }) {
             </div>
           )}
         </section>
+        </> : <PickingSheet picking={picking} items={items} onReplace={replacePicking} />}
+        <nav aria-label="Hojas del pedido" className="sticky bottom-0 z-20 -mx-4 mt-1 flex border-y border-[#C9D1D8] bg-[#E8ECEF] px-4 shadow-[0_-3px_10px_rgba(15,31,61,0.08)] sm:mx-0 sm:rounded-t-lg sm:border-x">
+          <button type="button" onClick={() => setActiveSheet('registro')} aria-current={activeSheet === 'registro' ? 'page' : undefined} className={`min-h-11 border-x border-[#C9D1D8] px-5 text-sm font-semibold ${activeSheet === 'registro' ? 'bg-white text-global-blue' : 'text-global-text'}`}>Registro</button>
+          <button type="button" onClick={() => setActiveSheet('picking')} aria-current={activeSheet === 'picking' ? 'page' : undefined} className={`min-h-11 border-r border-[#C9D1D8] px-5 text-sm font-semibold ${activeSheet === 'picking' ? 'bg-white text-global-blue' : 'text-global-text'}`}>Picking</button>
+          <span className="ml-auto self-center text-[11px] text-global-text">Desliza para cambiar</span>
+        </nav>
       </main>
 
         {/* MODAL BORRAR FILA */}

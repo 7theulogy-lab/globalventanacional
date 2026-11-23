@@ -58,6 +58,7 @@ export default function Dashboard({ onSelectVenta }) {
       }
       try {
         localStorage.removeItem(`venta_items_${ventaToDelete}`);
+        localStorage.removeItem(`venta_picking_${ventaToDelete}`);
         setActionError('');
       } catch {
         setActionError('El pedido se quitó de la lista, pero no se pudo limpiar su copia local.');

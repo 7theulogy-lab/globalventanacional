@@ -4,6 +4,7 @@ import { supabase, displayCloudError, requireData } from './lib/supabase';
 import { normalizeCode, parseQuantity } from './utils/inventory';
 import { createBackup, parseBackup } from './utils/backup';
 import { playSuccessSound } from './utils/audio';
+import PickingSheet from './components/PickingSheet';
 
 function linkFor(orderId) {
   const url = new URL(window.location.href);
@@ -14,9 +15,9 @@ function linkFor(orderId) {
   return url.toString();
 }
 
-function Notice({ message, error = false }) {
+function Notice({ message, error = false, warning = false }) {
   if (!message) return null;
-  return <p role={error ? 'alert' : 'status'} className={`mb-4 rounded-lg border px-4 py-3 text-sm ${error ? 'border-red-200 bg-red-50 text-red-800' : 'border-[#CFE7EA] bg-[#F2F8F9] text-global-blue'}`}>{message}</p>;
+  return <p role={error ? 'alert' : 'status'} className={`mb-4 rounded-lg border px-4 py-3 text-sm ${error ? 'border-red-200 bg-red-50 text-red-800' : warning ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-[#CFE7EA] bg-[#F2F8F9] text-global-blue'}`}>{message}</p>;
 }
 
 function Header({ children }) {
@@ -79,6 +80,21 @@ export default function CloudApp() {
     }
   };
 
+  const replacePicking = async (orderId, picking) => {
+    if (busy) return false;
+    setBusy(true);
+    try {
+      await requireData(supabase.rpc('shared_replace_picking', { p_order_id: orderId, p_items: picking }));
+      await refresh();
+      return true;
+    } catch (cause) {
+      setError(displayCloudError(cause));
+      throw cause;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const navigate = orderId => {
     window.history.pushState({}, '', linkFor(orderId));
     setSelectedId(orderId);
@@ -93,7 +109,7 @@ export default function CloudApp() {
   }, [loading, selectedId, selected, error]);
 
   return <div className="min-h-screen bg-global-bg font-sans">
-    {selectedId && selected ? <OrderScreen order={selected} onBack={() => navigate(null)} mutate={mutate} busy={busy} error={error} clearError={() => setError('')} />
+    {selectedId && selected ? <OrderScreen order={selected} onBack={() => navigate(null)} mutate={mutate} replacePicking={replacePicking} busy={busy} error={error} clearError={() => setError('')} />
       : <HomeScreen orders={orders} loading={loading} error={error} busy={busy} mutate={mutate} onSelect={navigate} refresh={refresh} />}
   </div>;
 }
@@ -204,28 +220,38 @@ function Modal({ title, children, onCancel, onConfirm, confirm, danger = false, 
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-global-navy/40 p-4" role="dialog" aria-modal="true" aria-label={title}><form onSubmit={event => { event.preventDefault(); onConfirm(event); }} className="w-full max-w-[360px] overflow-hidden rounded-2xl bg-white shadow-2xl"><div className="p-6"><h2 className="mb-3 text-lg font-bold text-global-navy">{title}</h2>{children}</div><div className="flex border-t border-gray-100 bg-gray-50"><button type="button" onClick={onCancel} className="min-h-12 flex-1 text-sm font-semibold text-global-text">Cancelar</button><button disabled={busy} type="submit" className={`min-h-12 flex-1 border-l border-gray-200 text-sm font-semibold disabled:opacity-50 ${danger ? 'text-red-600' : 'text-global-blue'}`}>{confirm}</button></div></form></div>;
 }
 
-function OrderScreen({ order, onBack, mutate, busy, error, clearError }) {
+function OrderScreen({ order, onBack, mutate, replacePicking, busy, error, clearError }) {
   const [code, setCode] = useState('');
   const [quantity, setQuantity] = useState('');
   const [search, setSearch] = useState('');
   const [edit, setEdit] = useState(null);
   const [remove, setRemove] = useState(null);
   const [clear, setClear] = useState(false);
-  const [message, setMessage] = useState('');
+  const [notice, setNotice] = useState(null);
+  const [activeSheet, setActiveSheet] = useState('registro');
   const codeRef = useRef(null);
+  const touchStartRef = useRef(null);
   const items = order.items;
+  const picking = order.picking ?? [];
+  const pickingCodes = new Set(picking.map(row => row.code));
   const total = items.reduce((sum, item) => sum + Number(item.quantity), 0);
   const visible = items.filter(item => item.code.includes(search.toUpperCase()));
 
+  const resultNotice = (normalized, successMessage) => picking.length && !pickingCodes.has(normalized)
+    ? { warning: true, message: `${normalized} no existe en el picking. Revisa este código.` }
+    : { warning: false, message: successMessage };
   const add = async event => {
     event.preventDefault(); clearError();
     try {
       const normalized = normalizeCode(code);
       const count = parseQuantity(quantity);
       if (await mutate('add_item', { order_id: order.id, code: normalized, quantity: count })) {
-        playSuccessSound(); setCode(''); setQuantity(''); setMessage(`${normalized}: ${count} unidades registradas.`); codeRef.current?.focus();
+        playSuccessSound();
+        setCode(''); setQuantity('');
+        setNotice(resultNotice(normalized, `${normalized}: ${count} unidades registradas.`));
+        codeRef.current?.focus();
       }
-    } catch (cause) { setMessage(cause.message); }
+    } catch (cause) { setNotice({ message: cause.message }); }
   };
   const saveEdit = async event => {
     event.preventDefault(); clearError();
@@ -233,31 +259,53 @@ function OrderScreen({ order, onBack, mutate, busy, error, clearError }) {
       const normalized = normalizeCode(edit.code);
       const count = parseQuantity(edit.quantity);
       if (await mutate('edit_item', { item_id: edit.id, code: normalized, quantity: count })) {
-        setEdit(null); setMessage(`${normalized} actualizado. Si ya existía, se sumaron las cantidades.`);
+        setEdit(null);
+        setNotice(resultNotice(normalized, `${normalized} actualizado. Si ya existía, se sumaron las cantidades.`));
       }
-    } catch (cause) { setMessage(cause.message); }
+    } catch (cause) { setNotice({ message: cause.message }); }
   };
   const deleteItem = async () => {
-    if (await mutate('delete_item', { item_id: remove.id })) { setRemove(null); setMessage('Código borrado.'); }
+    if (await mutate('delete_item', { item_id: remove.id })) { setRemove(null); setNotice({ message: 'Código borrado.' }); }
   };
   const clearAll = async () => {
-    if (await mutate('clear_items', { order_id: order.id })) { setClear(false); setMessage('Se borraron todos los códigos.'); }
+    if (await mutate('clear_items', { order_id: order.id })) { setClear(false); setNotice({ message: 'Se borraron todos los códigos.' }); }
   };
   const copyExcel = async () => {
-    try { await navigator.clipboard.writeText('Código\tCantidad\n' + items.map(item => `${item.code}\t${item.quantity}`).join('\n')); setMessage('Tabla copiada para pegar en Excel.'); }
-    catch { setMessage('No se pudo copiar la tabla.'); }
+    try { await navigator.clipboard.writeText('Código\tCantidad\n' + items.map(item => `${item.code}\t${item.quantity}`).join('\n')); setNotice({ message: 'Tabla copiada para pegar en Excel.' }); }
+    catch { setNotice({ message: 'No se pudo copiar la tabla.' }); }
+  };
+  const handleTouchStart = event => {
+    const touch = event.changedTouches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+  const handleTouchEnd = event => {
+    if (!touchStartRef.current) return;
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - touchStartRef.current.x;
+    const deltaY = touch.clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+    if (Math.abs(deltaX) < 60 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
+    if (deltaX < 0 && activeSheet === 'registro') setActiveSheet('picking');
+    if (deltaX > 0 && activeSheet === 'picking') setActiveSheet('registro');
   };
 
   return <>
     <Header><div className="flex items-center justify-between gap-2"><button onClick={onBack} className="inline-flex min-h-10 items-center gap-1 text-sm"><ArrowLeft size={18} /> Pedidos</button><button onClick={copyExcel} disabled={!items.length} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/45 px-3 text-sm disabled:opacity-50"><Copy size={16} /> Copiar para Excel</button></div><p className="mt-4 text-xs text-white/85">Control de Calidad · Venta Nacional</p><h1 className="mt-1 break-words text-[26px] font-semibold">{order.name}</h1><p className="mt-2 text-sm text-white/90">{items.length} códigos · {total} unidades</p></Header>
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pb-16 pt-6 sm:px-8 sm:pt-10"><Notice error message={error} /><Notice message={message} />
-      <section className="rounded-xl border border-[#DCE2E7] bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold text-global-navy">Registrar código</h2><p className="mb-5 mt-1 text-[13px] text-global-text">Agrega el código y la cantidad de este pedido.</p><form onSubmit={add} className="grid grid-cols-[minmax(0,1fr)_88px] items-end gap-3 sm:grid-cols-[minmax(0,1fr)_112px_auto]"><div className="min-w-0"><label htmlFor="cloud-code" className="mb-2 block text-[13px] font-semibold text-global-navy">Código</label><input id="cloud-code" ref={codeRef} required maxLength={120} value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="Ej: IP8194" className="w-full rounded-md border border-[#DCE2E7] px-3 py-3 text-sm font-semibold" /></div><div><label htmlFor="cloud-quantity" className="mb-2 block text-[13px] font-semibold text-global-navy">Cant.</label><input id="cloud-quantity" required inputMode="numeric" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="1" className="w-full rounded-md border border-[#DCE2E7] px-2 py-3 text-center text-sm font-semibold" /></div><button disabled={busy} className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-global-teal px-5 text-sm text-white disabled:opacity-50 sm:col-span-1"><Plus size={17} /> Agregar</button></form></section>
-      <section className="overflow-hidden rounded-xl border border-[#DCE2E7] bg-white shadow-sm"><div className="border-b border-[#DCE2E7] px-5 py-4 sm:flex sm:items-center sm:justify-between"><div><h2 className="text-lg font-semibold text-global-navy">Códigos registrados</h2><p className="mt-1 text-[13px] text-global-text">Consulta y corrige los registros de este pedido.</p></div>{items.length > 0 && <button onClick={() => setClear(true)} className="mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-md border border-red-200 px-3 text-sm text-red-600 sm:mt-0"><Trash2 size={16} /> Borrar todos</button>}</div>
-        {items.length > 0 && <div className="relative border-b border-[#DCE2E7] p-4"><Search size={17} className="absolute left-7 top-1/2 -translate-y-1/2 text-global-text" /><input type="search" aria-label="Buscar código" placeholder="Buscar código..." value={search} onChange={e => setSearch(e.target.value)} className="w-full rounded-md border border-[#DCE2E7] py-3 pl-10 pr-3 text-sm" /></div>}
-        {visible.length ? <ul className="divide-y divide-[#E8ECEF]">{visible.map(item => <li key={item.id} className="flex min-h-[68px] items-center gap-2 px-3 py-2.5 sm:px-5"><span className="min-w-0 flex-1 break-all font-mono text-sm font-semibold text-global-navy">{item.code}</span><span className="rounded-md border border-[#CFE7EA] bg-[#F2F8F9] px-2 py-1 text-sm font-semibold text-global-blue">{item.quantity}</span><button onClick={() => setEdit({ ...item })} aria-label={`Editar ${item.code}`} className="p-2.5 text-global-blue"><Edit2 size={17} /></button><button onClick={() => setRemove(item)} aria-label={`Borrar ${item.code}`} className="p-2.5 text-red-500"><Trash2 size={17} /></button></li>)}</ul> : <div className="px-6 py-12 text-center"><h3 className="text-base font-semibold text-global-navy">{search ? 'Sin coincidencias' : 'Aún no hay códigos'}</h3><p className="mt-2 text-[13px] text-global-text">{search ? 'Prueba con otro código.' : 'Ingresa el primer código y su cantidad para comenzar.'}</p></div>}
-      </section>
+    <main onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pb-16 pt-6 sm:px-8 sm:pt-10">
+      <Notice error message={error} /><Notice warning={notice?.warning} message={notice?.message} />
+      {activeSheet === 'registro' ? <>
+        <section className="rounded-xl border border-[#DCE2E7] bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold text-global-navy">Registrar código</h2><p className="mb-5 mt-1 text-[13px] text-global-text">Agrega el código y la cantidad de este pedido.</p><form onSubmit={add} className="grid grid-cols-[minmax(0,1fr)_88px] items-end gap-3 sm:grid-cols-[minmax(0,1fr)_112px_auto]"><div className="min-w-0"><label htmlFor="cloud-code" className="mb-2 block text-[13px] font-semibold text-global-navy">Código</label><input id="cloud-code" ref={codeRef} required maxLength={120} value={code} onChange={event => setCode(event.target.value.toUpperCase())} placeholder="Ej: IP8194" className="w-full rounded-md border border-[#DCE2E7] px-3 py-3 text-sm font-semibold" /></div><div><label htmlFor="cloud-quantity" className="mb-2 block text-[13px] font-semibold text-global-navy">Cant.</label><input id="cloud-quantity" required inputMode="numeric" value={quantity} onChange={event => setQuantity(event.target.value)} placeholder="1" className="w-full rounded-md border border-[#DCE2E7] px-2 py-3 text-center text-sm font-semibold" /></div><button disabled={busy} className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-global-teal px-5 text-sm text-white disabled:opacity-50 sm:col-span-1"><Plus size={17} /> Agregar</button></form></section>
+        <section className="overflow-hidden rounded-xl border border-[#DCE2E7] bg-white shadow-sm"><div className="border-b border-[#DCE2E7] px-5 py-4 sm:flex sm:items-center sm:justify-between"><div><h2 className="text-lg font-semibold text-global-navy">Códigos registrados</h2><p className="mt-1 text-[13px] text-global-text">Consulta y corrige los registros de este pedido.</p></div>{items.length > 0 && <button onClick={() => setClear(true)} className="mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-md border border-red-200 px-3 text-sm text-red-600 sm:mt-0"><Trash2 size={16} /> Borrar todos</button>}</div>
+          {items.length > 0 && <div className="relative border-b border-[#DCE2E7] p-4"><Search size={17} className="absolute left-7 top-1/2 -translate-y-1/2 text-global-text" /><input type="search" aria-label="Buscar código" placeholder="Buscar código..." value={search} onChange={event => setSearch(event.target.value)} className="w-full rounded-md border border-[#DCE2E7] py-3 pl-10 pr-3 text-sm" /></div>}
+          {visible.length ? <ul className="divide-y divide-[#E8ECEF]">{visible.map(item => {
+            const outsidePicking = picking.length && !pickingCodes.has(item.code);
+            return <li key={item.id} className={`flex min-h-[68px] items-center gap-2 border-l-[3px] px-3 py-2.5 sm:px-5 ${outsidePicking ? 'border-amber-400 bg-amber-50' : 'border-transparent'}`}><span className="min-w-0 flex-1 break-all font-mono text-sm font-semibold text-global-navy">{item.code}{outsidePicking && <small className="mt-1 block font-sans text-[11px] font-semibold text-amber-800">Fuera de picking</small>}</span><span className="rounded-md border border-[#CFE7EA] bg-[#F2F8F9] px-2 py-1 text-sm font-semibold text-global-blue">{item.quantity}</span><button onClick={() => setEdit({ ...item })} aria-label={`Editar ${item.code}`} className="p-2.5 text-global-blue"><Edit2 size={17} /></button><button onClick={() => setRemove(item)} aria-label={`Borrar ${item.code}`} className="p-2.5 text-red-500"><Trash2 size={17} /></button></li>;
+          })}</ul> : <div className="px-6 py-12 text-center"><h3 className="text-base font-semibold text-global-navy">{search ? 'Sin coincidencias' : 'Aún no hay códigos'}</h3><p className="mt-2 text-[13px] text-global-text">{search ? 'Prueba con otro código.' : 'Ingresa el primer código y su cantidad para comenzar.'}</p></div>}
+        </section>
+      </> : <PickingSheet picking={picking} items={items} busy={busy} onReplace={rows => replacePicking(order.id, rows)} />}
+      <nav aria-label="Hojas del pedido" className="sticky bottom-0 z-20 -mx-4 mt-1 flex border-y border-[#C9D1D8] bg-[#E8ECEF] px-4 shadow-[0_-3px_10px_rgba(15,31,61,0.08)] sm:mx-0 sm:rounded-t-lg sm:border-x"><button type="button" onClick={() => setActiveSheet('registro')} aria-current={activeSheet === 'registro' ? 'page' : undefined} className={`min-h-11 border-x border-[#C9D1D8] px-5 text-sm font-semibold ${activeSheet === 'registro' ? 'bg-white text-global-blue' : 'text-global-text'}`}>Registro</button><button type="button" onClick={() => setActiveSheet('picking')} aria-current={activeSheet === 'picking' ? 'page' : undefined} className={`min-h-11 border-r border-[#C9D1D8] px-5 text-sm font-semibold ${activeSheet === 'picking' ? 'bg-white text-global-blue' : 'text-global-text'}`}>Picking</button><span className="ml-auto self-center text-[11px] text-global-text">Desliza para cambiar</span></nav>
     </main>
-    {edit && <Modal title="Editar código" onCancel={() => setEdit(null)} onConfirm={saveEdit} confirm="Guardar" busy={busy}><div className="grid grid-cols-[minmax(0,1fr)_88px] gap-3"><div><label htmlFor="edit-code" className="mb-2 block text-sm font-semibold">Código</label><input id="edit-code" autoFocus required maxLength={120} value={edit.code} onChange={e => setEdit({ ...edit, code: e.target.value.toUpperCase() })} className="w-full rounded-md border border-[#DCE2E7] px-3 py-3 text-sm" /></div><div><label htmlFor="edit-quantity" className="mb-2 block text-sm font-semibold">Cant.</label><input id="edit-quantity" required inputMode="numeric" value={edit.quantity} onChange={e => setEdit({ ...edit, quantity: e.target.value })} className="w-full rounded-md border border-[#DCE2E7] px-2 py-3 text-center text-sm" /></div></div></Modal>}
+    {edit && <Modal title="Editar código" onCancel={() => setEdit(null)} onConfirm={saveEdit} confirm="Guardar" busy={busy}><div className="grid grid-cols-[minmax(0,1fr)_88px] gap-3"><div><label htmlFor="edit-code" className="mb-2 block text-sm font-semibold">Código</label><input id="edit-code" autoFocus required maxLength={120} value={edit.code} onChange={event => setEdit({ ...edit, code: event.target.value.toUpperCase() })} className="w-full rounded-md border border-[#DCE2E7] px-3 py-3 text-sm" /></div><div><label htmlFor="edit-quantity" className="mb-2 block text-sm font-semibold">Cant.</label><input id="edit-quantity" required inputMode="numeric" value={edit.quantity} onChange={event => setEdit({ ...edit, quantity: event.target.value })} className="w-full rounded-md border border-[#DCE2E7] px-2 py-3 text-center text-sm" /></div></div></Modal>}
     {remove && <Modal title="¿Borrar código?" onCancel={() => setRemove(null)} onConfirm={deleteItem} confirm="Borrar" danger busy={busy}><p className="text-sm text-global-text">Se eliminará {remove.code} de este pedido.</p></Modal>}
     {clear && <Modal title="¿Borrar todos los códigos?" onCancel={() => setClear(false)} onConfirm={clearAll} confirm="Borrar todos" danger busy={busy}><p className="text-sm text-global-text">Se eliminarán los {items.length} códigos de {order.name}. El pedido se conservará.</p></Modal>}
   </>;
