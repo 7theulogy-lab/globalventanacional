@@ -31,25 +31,30 @@ function headerName(value) {
 }
 
 export function parsePickingCsv(text) {
-  const lines = String(text ?? '').replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
-  if (lines.length < 2) throw new Error('El CSV debe incluir encabezados y al menos una fila.');
-
-  const delimiter = [';', ',', '\t'].reduce((best, candidate) =>
-    lines[0].split(candidate).length > lines[0].split(best).length ? candidate : best
-  , ';');
-  const headers = parseCsvLine(lines[0], delimiter).map(headerName);
-  const codeIndex = headers.indexOf('codigo');
-  const quantityIndex = headers.indexOf('cantidad');
-  if (codeIndex < 0 || quantityIndex < 0) {
+  const lines = String(text ?? '').replace(/^\uFEFF/, '').split(/\r?\n/);
+  let header = null;
+  for (let lineIndex = 0; lineIndex < lines.length && !header; lineIndex += 1) {
+    for (const delimiter of [';', ',', '\t']) {
+      const headers = parseCsvLine(lines[lineIndex], delimiter).map(headerName);
+      const codeIndex = headers.indexOf('codigo');
+      const quantityIndex = headers.indexOf('cantidad');
+      if (codeIndex >= 0 && quantityIndex >= 0) {
+        header = { lineIndex, delimiter, codeIndex, quantityIndex };
+        break;
+      }
+    }
+  }
+  if (!header) {
     throw new Error('El CSV debe tener las columnas Código y Cantidad.');
   }
 
   const byCode = new Map();
-  for (let index = 1; index < lines.length; index += 1) {
-    const cells = parseCsvLine(lines[index], delimiter);
+  for (let index = header.lineIndex + 1; index < lines.length; index += 1) {
+    const cells = parseCsvLine(lines[index], header.delimiter);
+    if (cells.every(cell => !cell)) continue;
     try {
-      const code = normalizeCode(cells[codeIndex]);
-      const quantity = parseQuantity(cells[quantityIndex]);
+      const code = normalizeCode(cells[header.codeIndex]);
+      const quantity = parseQuantity(cells[header.quantityIndex]);
       const previous = byCode.get(code) ?? 0;
       const total = previous + quantity;
       if (!Number.isSafeInteger(total)) throw new Error('La cantidad total supera el límite permitido.');
@@ -59,6 +64,7 @@ export function parsePickingCsv(text) {
     }
   }
 
+  if (!byCode.size) throw new Error('El CSV no contiene códigos para cargar.');
   return [...byCode].map(([code, quantity]) => ({ code, quantity }));
 }
 

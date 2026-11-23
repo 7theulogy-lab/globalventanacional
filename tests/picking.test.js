@@ -13,6 +13,14 @@ test('consolida códigos repetidos del picking', () => {
   assert.deepEqual(parsePickingCsv('codigo,cantidad\na,2\nA,4'), [{ code: 'A', quantity: 6 }]);
 });
 
+test('acepta filas y columnas vacías antes de los encabezados exportados', () => {
+  const csv = ',,\n,Codigo,Cantidad\n,MNP01,35\n,MNP09,25\n';
+  assert.deepEqual(parsePickingCsv(csv), [
+    { code: 'MNP01', quantity: 35 },
+    { code: 'MNP09', quantity: 25 }
+  ]);
+});
+
 test('rechaza columnas o cantidades inválidas indicando la fila', () => {
   assert.throws(() => parsePickingCsv('producto,cantidad\nA,2'), /columnas Código y Cantidad/);
   assert.throws(() => parsePickingCsv('codigo,cantidad\nA,0'), /Fila 2/);
